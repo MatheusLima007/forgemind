@@ -1,0 +1,106 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://forgemind.dev/schemas/arrc.schema.json",
+  "title": "ForgeMind ARRC Schemas",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["contract", "fingerprint"],
+  "properties": {
+    "contract": {
+      "$ref": "#/$defs/aiContract"
+    },
+    "fingerprint": {
+      "$ref": "#/$defs/repoFingerprint"
+    }
+  },
+  "$defs": {
+    "sha256": {
+      "type": "string",
+      "pattern": "^[a-fA-F0-9]{64}$"
+    },
+    "isoDate": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "repoFingerprint": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "version",
+        "generatedAt",
+        "structureHash",
+        "dependenciesHash",
+        "docsHash",
+        "fingerprint"
+      ],
+      "properties": {
+        "version": {
+          "const": "1.0.0"
+        },
+        "generatedAt": {
+          "$ref": "#/$defs/isoDate"
+        },
+        "structureHash": {
+          "$ref": "#/$defs/sha256"
+        },
+        "dependenciesHash": {
+          "$ref": "#/$defs/sha256"
+        },
+        "docsHash": {
+          "$ref": "#/$defs/sha256"
+        },
+        "fingerprint": {
+          "$ref": "#/$defs/sha256"
+        }
+      }
+    },
+    "aiContract": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "arrcVersion",
+        "version",
+        "generatedAt",
+        "complianceLevel",
+        "scanSummary",
+        "fingerprint"
+      ],
+      "properties": {
+        "arrcVersion": {
+          "const": "1.0.0"
+        },
+        "version": {
+          "const": "1.0.0"
+        },
+        "generatedAt": {
+          "$ref": "#/$defs/isoDate"
+        },
+        "complianceLevel": {
+          "enum": ["L1"]
+        },
+        "scanSummary": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["languages", "frameworks", "dependencyFiles"],
+          "properties": {
+            "languages": {
+              "type": "array",
+              "items": { "type": "string" }
+            },
+            "frameworks": {
+              "type": "array",
+              "items": { "type": "string" }
+            },
+            "dependencyFiles": {
+              "type": "array",
+              "items": { "type": "string" }
+            }
+          }
+        },
+        "fingerprint": {
+          "$ref": "#/$defs/repoFingerprint"
+        }
+      }
+    }
+  }
+}
