@@ -5,6 +5,7 @@
 - Frameworks: unknown
 
 ## Top-Level Folders
+- .vscode
 - ai
 - docs
 - policies

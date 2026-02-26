@@ -1,63 +1,63 @@
 {
-  "version": "1.0.0",
-  "generatedAt": "2026-02-26T01:49:16.113Z",
-  "level": "L1",
+  "generatedAt": "2026-02-26T03:08:25.934Z",
   "items": [
     {
-      "id": "DOC_AGENT_FIRST",
       "description": "Agent-first documentation",
+      "id": "DOC_AGENT_FIRST",
       "path": "docs/agent-first.md",
       "required": true,
       "status": "present"
     },
     {
-      "id": "DOC_ARCHITECTURE",
       "description": "Architecture documentation",
+      "id": "DOC_ARCHITECTURE",
       "path": "docs/architecture.md",
       "required": true,
       "status": "present"
     },
     {
-      "id": "PROMPT_REVIEW",
       "description": "Review prompt",
+      "id": "PROMPT_REVIEW",
       "path": "prompts/review.md",
       "required": true,
       "status": "present"
     },
     {
-      "id": "PROMPT_FEATURE",
       "description": "Feature prompt",
+      "id": "PROMPT_FEATURE",
       "path": "prompts/feature.md",
       "required": true,
       "status": "present"
     },
     {
-      "id": "PROMPT_REFACTOR",
       "description": "Refactor prompt",
+      "id": "PROMPT_REFACTOR",
       "path": "prompts/refactor.md",
       "required": true,
       "status": "present"
     },
     {
-      "id": "PROMPT_TROUBLESHOOTING",
       "description": "Troubleshooting prompt",
+      "id": "PROMPT_TROUBLESHOOTING",
       "path": "prompts/troubleshooting.md",
       "required": true,
       "status": "present"
     },
     {
-      "id": "AI_CONTRACT",
       "description": "AI contract",
+      "id": "AI_CONTRACT",
       "path": "ai/contract.json",
       "required": true,
       "status": "present"
     },
     {
-      "id": "AI_FINGERPRINT",
       "description": "AI fingerprint",
+      "id": "AI_FINGERPRINT",
       "path": "ai/fingerprint.json",
       "required": true,
       "status": "present"
     }
-  ]
+  ],
+  "level": "L1",
+  "version": "1.0.0"
 }
