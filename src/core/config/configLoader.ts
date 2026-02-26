@@ -1,7 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { fileExists } from "../../utils/fileSystem.js";
-import type { ForgemindConfig } from "../types/index.js";
+import type { ForgemindConfig, LLMProviderName } from "../types/index.js";
 import { defaultConfig } from "./defaults.js";
 
 function isConfigShape(value: unknown): value is Partial<ForgemindConfig> {
@@ -18,6 +18,8 @@ const SUPPORTED_TEMPLATE_OVERRIDE_KEYS = new Set([
   "policies.checklist",
   "ai.contract"
 ]);
+
+const SUPPORTED_LLM_PROVIDERS: Array<Exclude<LLMProviderName, "none">> = ["openai", "openai-compatible", "anthropic", "azure", "local"];
 
 function assertValidConfig(config: ForgemindConfig): void {
   if (config.compliance.level !== "L1") {
@@ -69,6 +71,32 @@ function assertValidConfig(config: ForgemindConfig): void {
       throw new Error(`Invalid config: templateOverrides.${key} is not a supported override key`);
     }
   }
+
+  if (config.llm !== undefined) {
+    if (typeof config.llm.enabled !== "boolean") {
+      throw new Error("Invalid config: llm.enabled must be a boolean");
+    }
+
+    if (!SUPPORTED_LLM_PROVIDERS.includes(config.llm.provider)) {
+      throw new Error("Invalid config: llm.provider must be one of openai, openai-compatible, anthropic, azure, local");
+    }
+
+    if (typeof config.llm.model !== "string" || config.llm.model.trim() === "") {
+      throw new Error("Invalid config: llm.model must be a non-empty string");
+    }
+
+    if (typeof config.llm.temperature !== "number" || Number.isNaN(config.llm.temperature) || config.llm.temperature < 0 || config.llm.temperature > 2) {
+      throw new Error("Invalid config: llm.temperature must be a number between 0 and 2");
+    }
+
+    if (config.llm.apiKey !== undefined && (typeof config.llm.apiKey !== "string" || config.llm.apiKey.trim() === "")) {
+      throw new Error("Invalid config: llm.apiKey must be a non-empty string when provided");
+    }
+
+    if (config.llm.baseUrl !== undefined && (typeof config.llm.baseUrl !== "string" || config.llm.baseUrl.trim() === "")) {
+      throw new Error("Invalid config: llm.baseUrl must be a non-empty string when provided");
+    }
+  }
 }
 
 export async function loadConfig(rootPath: string, explicitPath?: string): Promise<ForgemindConfig> {
@@ -98,7 +126,15 @@ export async function loadConfig(rootPath: string, explicitPath?: string): Promi
     },
     ignoreDirs: parsed.ignoreDirs ?? defaultConfig.ignoreDirs,
     ignoreFilePatterns: parsed.ignoreFilePatterns ?? defaultConfig.ignoreFilePatterns,
-    templateOverrides: parsed.templateOverrides ?? defaultConfig.templateOverrides
+    templateOverrides: parsed.templateOverrides ?? defaultConfig.templateOverrides,
+    llm: {
+      enabled: parsed.llm?.enabled ?? defaultConfig.llm?.enabled ?? false,
+      provider: parsed.llm?.provider ?? defaultConfig.llm?.provider ?? "openai",
+      model: parsed.llm?.model ?? defaultConfig.llm?.model ?? "gpt-5-mini",
+      temperature: parsed.llm?.temperature ?? defaultConfig.llm?.temperature ?? 0.2,
+      apiKey: parsed.llm?.apiKey ?? defaultConfig.llm?.apiKey,
+      baseUrl: parsed.llm?.baseUrl ?? defaultConfig.llm?.baseUrl
+    }
   };
 
   assertValidConfig(merged);

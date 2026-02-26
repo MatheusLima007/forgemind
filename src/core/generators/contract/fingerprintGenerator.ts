@@ -1,9 +1,18 @@
 import { relative, resolve } from "node:path";
 import { fileExists, readTextFile, walkFiles } from "../../../utils/fileSystem.js";
 import { hashContent } from "../../../utils/hashing.js";
+import { normalizeToPosixPath } from "../../../utils/path.js";
 import type { GeneratorContext, RepoFingerprint } from "../../types/index.js";
 
 const DEFAULT_IGNORE_FILE_PATTERNS = [".*", "*.tmp", "*.temp", "*.swp", "*.swo", "*.bak", "*~"];
+const LLM_END_MARKER = "<!-- FORGEMIND:LLM_ENRICHMENT_END -->";
+
+function stripLLMEnrichmentBlocks(content: string): string {
+  return content
+    .replace(/<!-- FORGEMIND:LLM_START[^>]*-->[\s\S]*?<!-- FORGEMIND:LLM_END -->\n?/g, "")
+    .replace(new RegExp(`<!-- FORGEMIND:LLM_ENRICHMENT_START -->[\\s\\S]*?${LLM_END_MARKER}\\n?`, "g"), "")
+    .trimEnd();
+}
 
 function wildcardToRegExp(pattern: string): RegExp {
   const escaped = pattern.replace(/[.+?^${}()|[\]\\]/g, "\\$&").replaceAll("*", ".*");
@@ -11,7 +20,7 @@ function wildcardToRegExp(pattern: string): RegExp {
 }
 
 function isIgnoredFingerprintFile(relativePath: string, patterns: string[]): boolean {
-  const normalized = relativePath.replaceAll("\\", "/");
+  const normalized = normalizeToPosixPath(relativePath);
   const fileName = normalized.split("/").at(-1) ?? normalized;
   const matchers = patterns.map((pattern) => wildcardToRegExp(pattern));
   return matchers.some((matcher) => matcher.test(fileName) || matcher.test(normalized));
@@ -38,7 +47,7 @@ export class FingerprintGenerator {
     const ignoreFilePatterns = context.config.ignoreFilePatterns ?? DEFAULT_IGNORE_FILE_PATTERNS;
     const files = await walkFiles(context.scan.rootPath, context.config.ignoreDirs);
     const normalized = files
-      .map((file) => relative(context.scan.rootPath, file).replaceAll("\\", "/"))
+      .map((file) => normalizeToPosixPath(relative(context.scan.rootPath, file)))
       .filter((file) => !isIgnoredFingerprintFile(file, ignoreFilePatterns))
       .sort();
     return hashContent(normalized.join("\n"));
@@ -70,12 +79,12 @@ export class FingerprintGenerator {
     const docs = await walkFiles(docsDir);
     const parts: string[] = [];
     for (const file of docs.sort()) {
-      const relativePath = relative(context.scan.rootPath, file).replaceAll("\\", "/");
+      const relativePath = normalizeToPosixPath(relative(context.scan.rootPath, file));
       if (isIgnoredFingerprintFile(relativePath, ignoreFilePatterns)) {
         continue;
       }
       parts.push(relativePath);
-      parts.push(await readTextFile(file));
+      parts.push(stripLLMEnrichmentBlocks(await readTextFile(file)));
     }
 
     return hashContent(parts.join("\n"));

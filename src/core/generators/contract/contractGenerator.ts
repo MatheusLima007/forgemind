@@ -1,12 +1,13 @@
 import { resolve } from "node:path";
 import { writeTextFile } from "../../../utils/fileSystem.js";
+import { stableStringify } from "../../../utils/hashing.js";
 import { resolveTemplateContent } from "../../templates/templateResolver.js";
 import type { AIContract, GeneratorContext, RepoFingerprint } from "../../types/index.js";
 import { SUPPORTED_ARRC_VERSION } from "../../validation/arrcSchema.js";
 
 export class ContractGenerator {
-  async generate(context: GeneratorContext, fingerprint: RepoFingerprint): Promise<string> {
-    const contract: AIContract = {
+  build(context: GeneratorContext, fingerprint: RepoFingerprint): AIContract {
+    return {
       arrcVersion: SUPPORTED_ARRC_VERSION,
       version: "1.0.0",
       generatedAt: new Date().toISOString(),
@@ -21,14 +22,19 @@ export class ContractGenerator {
       },
       fingerprint
     };
+  }
+
+  async generate(context: GeneratorContext, fingerprint: RepoFingerprint): Promise<string> {
+    const contract = this.build(context, fingerprint);
+    const serializedContract = stableStringify(contract);
 
     const path = resolve(context.scan.rootPath, context.config.outputPaths.ai, "contract.json");
     const content = await resolveTemplateContent(
       context,
       "ai.contract",
-      JSON.stringify(contract, null, 2),
+      serializedContract,
       {
-        "contract.json": JSON.stringify(contract, null, 2),
+        "contract.json": serializedContract,
         "fingerprint.value": fingerprint.fingerprint,
         "fingerprint.structureHash": fingerprint.structureHash,
         "fingerprint.dependenciesHash": fingerprint.dependenciesHash,

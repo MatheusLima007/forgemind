@@ -22,6 +22,10 @@ function sortJson(value: unknown): unknown {
   return value;
 }
 
+export function stableStringify(value: unknown, space = 2): string {
+  return JSON.stringify(sortJson(value), null, space);
+}
+
 export function hashJson(value: unknown): string {
-  return hashContent(JSON.stringify(sortJson(value)));
+  return hashContent(stableStringify(value, 0));
 }

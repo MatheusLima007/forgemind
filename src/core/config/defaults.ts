@@ -12,5 +12,12 @@ export const defaultConfig: ForgemindConfig = {
   },
   ignoreDirs: [".git", "node_modules", "dist", "coverage"],
   ignoreFilePatterns: [".*", "*.tmp", "*.temp", "*.swp", "*.swo", "*.bak", "*~"],
-  templateOverrides: {}
+  templateOverrides: {},
+  llm: {
+    enabled: false,
+    provider: "openai",
+    model: "gpt-5-mini",
+    temperature: 0.2,
+    baseUrl: "https://api.openai.com/v1"
+  }
 };

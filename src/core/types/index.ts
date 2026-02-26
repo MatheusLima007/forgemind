@@ -1,5 +1,7 @@
 export type SupportedLanguage = "typescript" | "javascript" | "php" | "unknown";
 export type SupportedFramework = "nestjs" | "react" | "laravel" | "unknown";
+export type LLMProviderName = "openai" | "openai-compatible" | "anthropic" | "azure" | "local" | "none";
+export type LLMGenerationType = "docs" | "prompts" | "policies";
 
 export interface DependencyInfo {
   packageJson: boolean;
@@ -66,6 +68,45 @@ export interface ValidationResult {
   errors: string[];
 }
 
+export interface LLMConfig {
+  enabled: boolean;
+  provider: Exclude<LLMProviderName, "none">;
+  model: string;
+  temperature: number;
+  apiKey?: string;
+  baseUrl?: string;
+}
+
+export interface RepoFacts {
+  languages: SupportedLanguage[];
+  frameworks: SupportedFramework[];
+  topLevelStructure: string[];
+  dependencySummary: {
+    files: string[];
+    packageDependenciesCount: number;
+    composerDependenciesCount: number;
+  };
+  architecturalSignals: string[];
+  complianceLevel: "L1";
+}
+
+export interface LLMInput {
+  repoFacts: RepoFacts;
+  contractData: AIContract;
+  currentDocs: Record<string, string>;
+  generationType: LLMGenerationType;
+}
+
+export interface LLMOutput {
+  enrichedContent: Record<string, string>;
+  metadata: {
+    provider: Exclude<LLMProviderName, "none">;
+    model: string;
+    baseUrl?: string;
+    tokensUsed?: number;
+  };
+}
+
 export interface ForgemindConfig {
   compliance: {
     level: "L1";
@@ -79,6 +120,7 @@ export interface ForgemindConfig {
   ignoreDirs: string[];
   ignoreFilePatterns?: string[];
   templateOverrides: Record<string, string>;
+  llm?: LLMConfig;
 }
 
 export interface GeneratorContext {

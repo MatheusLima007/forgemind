@@ -1,5 +1,6 @@
 import { resolve } from "node:path";
 import { fileExists, writeTextFile } from "../../../utils/fileSystem.js";
+import { stableStringify } from "../../../utils/hashing.js";
 import { resolveTemplateContent } from "../../templates/templateResolver.js";
 import type { GeneratorContext, PolicyChecklist, PolicyItem } from "../../types/index.js";
 
@@ -36,13 +37,14 @@ export class PolicyGenerator {
 
   async generate(context: GeneratorContext): Promise<string> {
     const checklist = await this.buildChecklist(context);
+    const serializedChecklist = stableStringify(checklist);
     const path = resolve(context.scan.rootPath, context.config.outputPaths.policies, "checklist.json");
     const content = await resolveTemplateContent(
       context,
       "policies.checklist",
-      JSON.stringify(checklist, null, 2),
+      serializedChecklist,
       {
-        "policy.checklist.json": JSON.stringify(checklist, null, 2)
+        "policy.checklist.json": serializedChecklist
       }
     );
     await writeTextFile(path, content);
