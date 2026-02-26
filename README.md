@@ -222,6 +222,7 @@ Current contract includes:
 - [x] Internal ARRC schema validation
 - [x] Validation mode with exit codes
 - [x] Config file support (`forgemind.config.json`)
+- [x] Real-world dogfooding artifacts committed (`ai/`, `docs/`, `prompts/`, `policies/`)
 
 No LLM integration.
 
