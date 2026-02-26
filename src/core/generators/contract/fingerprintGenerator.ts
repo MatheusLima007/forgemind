@@ -1,7 +1,7 @@
-import { resolve, relative } from "node:path";
-import type { GeneratorContext, RepoFingerprint } from "../../types/index.js";
-import { hashContent } from "../../../utils/hashing.js";
+import { relative, resolve } from "node:path";
 import { fileExists, readTextFile, walkFiles } from "../../../utils/fileSystem.js";
+import { hashContent } from "../../../utils/hashing.js";
+import type { GeneratorContext, RepoFingerprint } from "../../types/index.js";
 
 const DEFAULT_IGNORE_FILE_PATTERNS = [".*", "*.tmp", "*.temp", "*.swp", "*.swo", "*.bak", "*~"];
 

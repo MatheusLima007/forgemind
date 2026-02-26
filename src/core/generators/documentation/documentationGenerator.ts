@@ -1,7 +1,7 @@
 import { resolve } from "node:path";
-import type { GeneratorContext } from "../../types/index.js";
 import { writeTextFile } from "../../../utils/fileSystem.js";
 import { resolveTemplateContent } from "../../templates/templateResolver.js";
+import type { GeneratorContext } from "../../types/index.js";
 
 function renderAgentFirst(context: GeneratorContext): string {
   const { scan } = context;

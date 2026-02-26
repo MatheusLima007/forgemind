@@ -1,13 +1,13 @@
 import { resolve } from "node:path";
-import type { ForgemindConfig, GeneratorContext, RepoFingerprint } from "../types/index.js";
-import { DocumentationGenerator } from "../generators/documentation/documentationGenerator.js";
-import { PromptPackGenerator } from "../generators/prompts/promptPackGenerator.js";
-import { PolicyGenerator } from "../generators/policy/policyGenerator.js";
+import { ensureDir } from "../../utils/fileSystem.js";
 import { ContractGenerator } from "../generators/contract/contractGenerator.js";
 import { FingerprintGenerator } from "../generators/contract/fingerprintGenerator.js";
 import { writeFingerprint } from "../generators/contract/fingerprintWriter.js";
+import { DocumentationGenerator } from "../generators/documentation/documentationGenerator.js";
+import { PolicyGenerator } from "../generators/policy/policyGenerator.js";
+import { PromptPackGenerator } from "../generators/prompts/promptPackGenerator.js";
 import { RepositoryScanner } from "../scanner/repositoryScanner.js";
-import { ensureDir } from "../../utils/fileSystem.js";
+import type { ForgemindConfig, GeneratorContext, RepoFingerprint } from "../types/index.js";
 
 export interface PipelineResult {
   generatedFiles: string[];

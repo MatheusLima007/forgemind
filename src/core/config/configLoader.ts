@@ -1,8 +1,8 @@
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
+import { fileExists } from "../../utils/fileSystem.js";
 import type { ForgemindConfig } from "../types/index.js";
 import { defaultConfig } from "./defaults.js";
-import { fileExists } from "../../utils/fileSystem.js";
 
 function isConfigShape(value: unknown): value is Partial<ForgemindConfig> {
   return typeof value === "object" && value !== null;

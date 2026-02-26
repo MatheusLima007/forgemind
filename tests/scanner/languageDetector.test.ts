@@ -1,7 +1,7 @@
-import { mkdtemp, writeFile, mkdir, rm } from "node:fs/promises";
-import { join } from "node:path";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { describe, it, expect, afterEach } from "vitest";
+import { join } from "node:path";
+import { afterEach, describe, expect, it } from "vitest";
 import { LanguageDetector } from "../../src/core/scanner/detectors/languageDetector.js";
 
 const createdDirs: string[] = [];

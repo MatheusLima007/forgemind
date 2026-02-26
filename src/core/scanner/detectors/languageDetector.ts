@@ -1,6 +1,6 @@
 import { extname } from "node:path";
-import type { SupportedLanguage } from "../../types/index.js";
 import { walkFiles } from "../../../utils/fileSystem.js";
+import type { SupportedLanguage } from "../../types/index.js";
 
 const extensionMap: Record<string, SupportedLanguage> = {
   ".ts": "typescript",

@@ -1,5 +1,5 @@
-import { resolve } from "node:path";
 import { readdir } from "node:fs/promises";
+import { resolve } from "node:path";
 import type { FolderStructure } from "../../types/index.js";
 
 export class StructureDetector {

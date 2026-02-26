@@ -1,7 +1,7 @@
 import { resolve } from "node:path";
-import type { GeneratorContext, PolicyChecklist, PolicyItem } from "../../types/index.js";
 import { fileExists, writeTextFile } from "../../../utils/fileSystem.js";
 import { resolveTemplateContent } from "../../templates/templateResolver.js";
+import type { GeneratorContext, PolicyChecklist, PolicyItem } from "../../types/index.js";
 
 function requiredItems(context: GeneratorContext): PolicyItem[] {
   const { outputPaths } = context.config;

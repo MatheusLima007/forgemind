@@ -1,6 +1,6 @@
 import { isAbsolute, resolve } from "node:path";
-import type { GeneratorContext } from "../types/index.js";
 import { fileExists, readTextFile } from "../../utils/fileSystem.js";
+import type { GeneratorContext } from "../types/index.js";
 
 function buildVariables(context: GeneratorContext, extra: Record<string, string>): Record<string, string> {
   const { scannedAt: _, ...stableScan } = context.scan;

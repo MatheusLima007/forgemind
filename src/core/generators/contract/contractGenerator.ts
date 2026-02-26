@@ -1,7 +1,7 @@
 import { resolve } from "node:path";
-import type { AIContract, GeneratorContext, RepoFingerprint } from "../../types/index.js";
 import { writeTextFile } from "../../../utils/fileSystem.js";
 import { resolveTemplateContent } from "../../templates/templateResolver.js";
+import type { AIContract, GeneratorContext, RepoFingerprint } from "../../types/index.js";
 import { SUPPORTED_ARRC_VERSION } from "../../validation/arrcSchema.js";
 
 export class ContractGenerator {

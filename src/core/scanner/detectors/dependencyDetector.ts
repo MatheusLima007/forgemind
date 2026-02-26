@@ -1,6 +1,6 @@
 import { resolve } from "node:path";
-import type { DependencyInfo } from "../../types/index.js";
 import { fileExists, readTextFile } from "../../../utils/fileSystem.js";
+import type { DependencyInfo } from "../../types/index.js";
 
 interface NodePackageJson {
   dependencies?: Record<string, string>;

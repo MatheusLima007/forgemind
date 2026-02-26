@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, expect, it } from "vitest";
 import { validateContractSchema, validateFingerprintSchema } from "../../src/core/validation/arrcSchema.js";
 
 function validFingerprint(): Record<string, string> {

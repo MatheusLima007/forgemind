@@ -1,13 +1,13 @@
 import { resolve } from "node:path";
-import type { ForgemindConfig, RepoFingerprint, ValidationResult } from "../types/index.js";
+import { fileExists, readTextFile } from "../../utils/fileSystem.js";
 import { FingerprintGenerator } from "../generators/contract/fingerprintGenerator.js";
 import { RepositoryScanner } from "../scanner/repositoryScanner.js";
-import { fileExists, readTextFile } from "../../utils/fileSystem.js";
+import type { ForgemindConfig, RepoFingerprint, ValidationResult } from "../types/index.js";
 import {
+  SUPPORTED_ARRC_VERSION,
   validateContractSchema,
   validateFingerprintSchema,
-  validatePolicyChecklistSchema,
-  SUPPORTED_ARRC_VERSION
+  validatePolicyChecklistSchema
 } from "./arrcSchema.js";
 
 const REQUIRED_POLICY_FILES = [
