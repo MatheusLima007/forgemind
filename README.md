@@ -62,6 +62,12 @@ Run directly in development:
 npm run dev -- scan
 ```
 
+Run scan with optional LLM enrichment:
+
+```bash
+npm run dev -- scan --llm openai
+```
+
 ## Commands
 
 ### Initialize AI-Ready Structure
@@ -96,6 +102,29 @@ ai/
 ```bash
 forgemind scan
 ```
+
+Optional enrichment mode:
+
+```bash
+forgemind scan --llm openai
+forgemind scan --llm openai-compatible
+forgemind scan --llm none
+```
+
+Strict mode (fail-fast, no fallback):
+
+```bash
+forgemind scan --llm openai --llm-strict
+```
+
+Supported provider values:
+
+- `none` (default)
+- `openai`
+- `openai-compatible`
+- `anthropic` (stub)
+- `azure` (stub)
+- `local` (stub)
 
 Detects:
 
@@ -164,6 +193,43 @@ Current config supports:
 - `ignoreFilePatterns` (fingerprint-level file pattern exclusions)
 - `compliance.level` (L1)
 - `templateOverrides` (deterministic file-based overrides)
+- `llm` (optional enrichment settings)
+
+Example:
+
+```json
+{
+  "llm": {
+    "enabled": true,
+    "provider": "openai-compatible",
+    "baseUrl": "http://localhost:11434/v1",
+    "model": "local-model",
+    "temperature": 0.2
+  }
+}
+```
+
+API key resolution order:
+
+1. `llm.apiKey` (from config)
+2. Provider-specific key env:
+   - `OPENAI_API_KEY` (`openai`, `openai-compatible`)
+   - `ANTHROPIC_API_KEY` (`anthropic`)
+   - `AZURE_OPENAI_API_KEY` (`azure`)
+3. `FORGEMIND_LLM_API_KEY` (generic fallback)
+
+Base URL resolution order:
+
+1. `llm.baseUrl` (from config)
+2. `FORGEMIND_LLM_BASE_URL`
+
+Security notes:
+
+- Never commit API keys in repository files.
+- Prefer env vars in CI.
+- ForgeMind never logs API key values.
+
+If no key is present, scan degrades gracefully to deterministic template output.
 
 Validation hardening:
 
@@ -232,20 +298,75 @@ Deterministic and reliable.
 
 Add pluggable LLM support:
 
-- [ ] Provider interface
-- [ ] Repo Facts JSON
-- [ ] Architecture summarization
-- [ ] Context-aware prompt generation
-- [ ] Schema-validated AI responses
+- [x] Provider interface
+- [x] Repo Facts JSON
+- [x] Architecture/document enrichment mode
+- [x] Context-aware prompt enrichment mode
+- [x] Structured/schema-validated AI responses
 
 Supported providers (planned):
 
-- [ ] OpenAI
+- [x] OpenAI
 - [ ] Azure OpenAI
 - [ ] Anthropic
 - [ ] Local models
 
 LLM integration remains optional.
+
+### Phase 2 Safety Model
+
+- LLM integration is strictly optional and disabled by default.
+- `validate` remains 100% deterministic and performs no network calls.
+- LLM output is enrichment-only and non-authoritative.
+- Core contract integrity (`ai/contract.json`, `ai/fingerprint.json`) remains deterministic.
+- If provider setup fails or request fails, scan continues with template-based output (unless `--llm-strict` is used).
+- Fingerprint hashing ignores LLM blocks in docs, preserving deterministic drift checks.
+- LLM output must pass the internal structured response schema before merge.
+
+### Local LLM Setup (OpenAI-Compatible)
+
+Use any OpenAI-compatible endpoint (e.g. local gateway):
+
+```json
+{
+  "llm": {
+    "enabled": true,
+    "provider": "openai-compatible",
+    "baseUrl": "http://localhost:11434/v1",
+    "model": "your-local-model",
+    "temperature": 0.2
+  }
+}
+```
+
+Then run:
+
+```bash
+forgemind scan --llm openai-compatible
+```
+
+Optional fail-fast mode:
+
+```bash
+forgemind scan --llm openai-compatible --llm-strict
+```
+
+### Determinism Guarantee
+
+- Deterministic scan/contract/fingerprint pipeline remains authoritative.
+- `validate` does not call providers and remains network-free.
+- LLM enrichment block replacement is idempotent across multiple runs.
+- JSON governance artifacts are serialized with stable key ordering.
+- Path normalization and hashing remain cross-platform stable.
+
+### npm Release Readiness Checklist
+
+- [x] Build output isolated in `dist/`
+- [x] CLI entrypoint configured in `package.json`
+- [x] Typed public exports configured (`exports`, `types`)
+- [x] Prepublish checks (`release:check`, `prepublishOnly`)
+- [x] Changelog structure added (`CHANGELOG.md`)
+- [x] Semver version field maintained in `package.json`
 
 ### Phase 3 — Advanced Governance
 
