@@ -15,7 +15,7 @@ export function registerInitCommand(program: Command): void {
 
       const config = await loadConfig(rootPath, options.config);
       const pipeline = new ForgePipeline();
-      const result = await pipeline.run(rootPath, config);
+      const result = await pipeline.run(rootPath, config, { llmProviderName: "none", llmStrict: false });
 
       if (options.json) {
         logger.outputJson({
