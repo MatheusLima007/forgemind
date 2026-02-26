@@ -1,0 +1,63 @@
+{
+  "version": "1.0.0",
+  "generatedAt": "2026-02-26T01:49:16.113Z",
+  "level": "L1",
+  "items": [
+    {
+      "id": "DOC_AGENT_FIRST",
+      "description": "Agent-first documentation",
+      "path": "docs/agent-first.md",
+      "required": true,
+      "status": "present"
+    },
+    {
+      "id": "DOC_ARCHITECTURE",
+      "description": "Architecture documentation",
+      "path": "docs/architecture.md",
+      "required": true,
+      "status": "present"
+    },
+    {
+      "id": "PROMPT_REVIEW",
+      "description": "Review prompt",
+      "path": "prompts/review.md",
+      "required": true,
+      "status": "present"
+    },
+    {
+      "id": "PROMPT_FEATURE",
+      "description": "Feature prompt",
+      "path": "prompts/feature.md",
+      "required": true,
+      "status": "present"
+    },
+    {
+      "id": "PROMPT_REFACTOR",
+      "description": "Refactor prompt",
+      "path": "prompts/refactor.md",
+      "required": true,
+      "status": "present"
+    },
+    {
+      "id": "PROMPT_TROUBLESHOOTING",
+      "description": "Troubleshooting prompt",
+      "path": "prompts/troubleshooting.md",
+      "required": true,
+      "status": "present"
+    },
+    {
+      "id": "AI_CONTRACT",
+      "description": "AI contract",
+      "path": "ai/contract.json",
+      "required": true,
+      "status": "present"
+    },
+    {
+      "id": "AI_FINGERPRINT",
+      "description": "AI fingerprint",
+      "path": "ai/fingerprint.json",
+      "required": true,
+      "status": "present"
+    }
+  ]
+}
