@@ -6,6 +6,8 @@ const originalApiKey = process.env.OPENAI_API_KEY;
 const originalForgeApiKey = process.env.FORGEMIND_LLM_API_KEY;
 const originalAnthropicKey = process.env.ANTHROPIC_API_KEY;
 const originalAzureKey = process.env.AZURE_OPENAI_API_KEY;
+const originalGeminiKey = process.env.GEMINI_API_KEY;
+const originalGoogleKey = process.env.GOOGLE_API_KEY;
 const originalBaseUrl = process.env.FORGEMIND_LLM_BASE_URL;
 
 afterEach(() => {
@@ -31,6 +33,18 @@ afterEach(() => {
     delete process.env.AZURE_OPENAI_API_KEY;
   } else {
     process.env.AZURE_OPENAI_API_KEY = originalAzureKey;
+  }
+
+  if (originalGeminiKey === undefined) {
+    delete process.env.GEMINI_API_KEY;
+  } else {
+    process.env.GEMINI_API_KEY = originalGeminiKey;
+  }
+
+  if (originalGoogleKey === undefined) {
+    delete process.env.GOOGLE_API_KEY;
+  } else {
+    process.env.GOOGLE_API_KEY = originalGoogleKey;
   }
 
   if (originalBaseUrl === undefined) {
@@ -125,5 +139,48 @@ describe("createLLMProvider", () => {
     );
 
     expect(runtime.baseUrl).toBe("http://config.local/v1");
+  });
+
+  it("returns gemini provider when GEMINI_API_KEY is set", () => {
+    process.env.GEMINI_API_KEY = "gemini-test-key";
+
+    const resolution = createLLMProvider(
+      { ...enabledConfig, provider: "gemini", model: "gemini-1.5-flash" },
+      "gemini"
+    );
+    expect(resolution.provider).not.toBeNull();
+    expect(resolution.skipReason).toBeUndefined();
+  });
+
+  it("returns gemini provider when GOOGLE_API_KEY is set", () => {
+    delete process.env.GEMINI_API_KEY;
+    process.env.GOOGLE_API_KEY = "google-test-key";
+
+    const resolution = createLLMProvider(
+      { ...enabledConfig, provider: "gemini", model: "gemini-1.5-pro" },
+      "gemini"
+    );
+    expect(resolution.provider).not.toBeNull();
+  });
+
+  it("returns null for gemini when no API key is available", () => {
+    delete process.env.GEMINI_API_KEY;
+    delete process.env.GOOGLE_API_KEY;
+    delete process.env.FORGEMIND_LLM_API_KEY;
+
+    const resolution = createLLMProvider(
+      { ...enabledConfig, provider: "gemini", model: "gemini-1.5-flash" },
+      "gemini"
+    );
+    expect(resolution.provider).toBeNull();
+    expect(resolution.skipReason).toBe("missing-api-key");
+  });
+
+  it("resolves gemini-specific key before generic fallback", () => {
+    process.env.GEMINI_API_KEY = "gemini-specific";
+    process.env.FORGEMIND_LLM_API_KEY = "generic-key";
+
+    const runtime = resolveProviderRuntime(enabledConfig, "gemini");
+    expect(runtime.apiKey).toBe("gemini-specific");
   });
 });
