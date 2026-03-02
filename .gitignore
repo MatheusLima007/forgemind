@@ -2,3 +2,7 @@ node_modules
 dist
 coverage
 .vitest
+docs-non-oficial
+ai/*.json
+!ai/contract.json
+!ai/fingerprint.json

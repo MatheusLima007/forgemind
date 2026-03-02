@@ -1,420 +1,157 @@
-# ForgeMind AI Toolkit
+# ForgeMind
 
-**AI-Ready Repository Governance for Agent-First Engineering.**
+**AI Context Engineering Engine — generates agent-first documentation via LLM-powered codebase analysis.**
 
-ForgeMind is a CLI toolkit that ensures your repository is structured for intelligent agent collaboration.
+ForgeMind scans your repository, detects architectural signals, generates hypotheses about your design decisions, conducts an interactive developer interview, and produces high-quality documentation optimized for AI agents — not humans reading wikis.
 
-It validates and generates Agent-First documentation, prompt packs, and AI governance contracts — without becoming a lint tool or static analyzer.
+## What It Produces
 
-## Why ForgeMind Exists
+Five agent-first documents in `docs/`:
 
-Modern development increasingly relies on AI agents.
+| Document | Purpose |
+|---|---|
+| `system-ontology.md` | Why this system exists and which mental model governs it |
+| `domain-invariants.md` | Business rules that must never be violated |
+| `module-boundaries.md` | What can and cannot cross module boundaries |
+| `decision-log.md` | Decisions with context, constraints, and trade-offs |
+| `agent-operating-manual.md` | Concrete rules for AI agents working in this codebase |
 
-However:
+## How It Works
 
-- Repositories are not structured for AI
-- Prompts are inconsistent
-- Documentation drifts
-- Agents generate misaligned code
-- Engineering rules live only in developers’ heads
-
-ForgeMind introduces the **AI-Ready Repository Contract (ARRC)**.
-
-It ensures your repository is:
-
-- Deterministic
-- Explicit
-- Governable
-- Drift-aware
-- AI-operable
-
-## Core Concept
-
-ForgeMind does **NOT** validate code quality like ESLint or Sonar.
-
-It validates the AI contract layer of your repository.
-
-It ensures:
-
-- Agent-first documentation exists
-- Prompts are aligned with architecture
-- Policies are declared
-- AI contract metadata is present
-- Drift between code and documentation is detected
-
-## Installation
-
-Install dependencies locally:
-
-```bash
-npm install
+```
+Scan → Detect Signals → Sample Code → Generate Hypotheses → Interview Developer → Consolidate → Generate Docs
 ```
 
-Build the CLI:
+1. **Scan** — Detects languages, frameworks, dependencies, file structure
+2. **Signal Analysis** — Identifies architectural patterns (hexagonal, CQRS, DDD, clean arch, etc.)
+3. **Code Sampling** — Selects strategic code snippets within token budget
+4. **Hypothesis Generation** — LLM generates hypotheses about architectural intent
+5. **Developer Interview** — Interactive CLI session to confirm/refute/expand hypotheses
+6. **Semantic Consolidation** — Merges all knowledge sources into structured knowledge
+7. **Document Generation** — LLM produces each document with anti-redundancy filtering
+
+## Quick Start
 
 ```bash
-npm run build
-```
+# Install
+npm install -g forgemind
 
-Run directly in development:
-
-```bash
-npm run dev -- scan
-```
-
-Run scan with optional LLM enrichment:
-
-```bash
-npm run dev -- scan --llm openai
-```
-
-## Commands
-
-### Initialize AI-Ready Structure
-
-```bash
+# Initialize config
 forgemind init
+
+# Set your API key
+export ANTHROPIC_API_KEY=sk-...
+
+# Run the full pipeline
+forgemind forge
+
+# Or skip the interview
+forgemind forge --skip-interview
+
+# Run only the interview
+forgemind interview
+
+# Generate docs from existing intermediate data
+forgemind generate
 ```
 
-Creates the required AI-Ready structure:
+## Configuration
 
-```text
-docs/
-  agent-first.md
-  architecture.md
-
-prompts/
-  review.md
-  feature.md
-  refactor.md
-  troubleshooting.md
-
-policies/
-  checklist.json
-
-ai/
-  contract.json
-  fingerprint.json
-```
-
-### Scan Repository
-
-```bash
-forgemind scan
-```
-
-Optional enrichment mode:
-
-```bash
-forgemind scan --llm openai
-forgemind scan --llm openai-compatible
-forgemind scan --llm none
-```
-
-Strict mode (fail-fast, no fallback):
-
-```bash
-forgemind scan --llm openai --llm-strict
-```
-
-Supported provider values:
-
-- `none` (default)
-- `openai`
-- `openai-compatible`
-- `anthropic` (stub)
-- `azure` (stub)
-- `local` (stub)
-
-Detects:
-
-- Language (JS, TS, PHP, etc.)
-- Framework (Nest, Laravel, React, etc.)
-- Folder structure
-- Dependency files
-- Architectural signals
-
-Generates or updates:
-
-- Agent-first documentation
-- Prompt packs
-- AI contract metadata
-- Fingerprint hash
-
-### Validate Contract (CI Mode)
-
-```bash
-forgemind validate
-```
-
-Fails if:
-
-- Required docs are missing
-- Prompts are missing
-- AI contract is outdated
-- Fingerprint drift is detected
-
-Exit codes:
-
-- `0` → OK
-- `1` → Policy violation
-- `2` → Documentation drift
-- `3` → Contract missing or invalid
-
-Designed to work in:
-
-- GitHub Actions
-- GitLab CI
-- Jenkins
-- Azure DevOps
-- Any CI/CD pipeline
-
-## AI-Ready Repository Contract (ARRC)
-
-ForgeMind enforces the AI-Ready Repository Contract.
-
-Level 1 Compliance requires:
-
-- Explicit architecture documentation
-- Prompt governance structure
-- Machine-readable AI contract file
-- Drift detection mechanism
-- Versioned policy definitions
-
-This ensures deterministic collaboration between humans and AI agents.
-
-## Config
-
-ForgeMind reads `forgemind.config.json` from the repository root.
-
-Current config supports:
-- `outputPaths`
-- `ignoreDirs`
-- `ignoreFilePatterns` (fingerprint-level file pattern exclusions)
-- `compliance.level` (L1)
-- `templateOverrides` (deterministic file-based overrides)
-- `llm` (optional enrichment settings)
-
-Example:
+`forgemind.config.json`:
 
 ```json
 {
+  "outputPath": "docs",
+  "intermediatePath": "ai",
+  "ignoreDirs": [".git", "node_modules", "dist"],
   "llm": {
-    "enabled": true,
-    "provider": "openai-compatible",
-    "baseUrl": "http://localhost:11434/v1",
-    "model": "local-model",
-    "temperature": 0.2
+    "provider": "anthropic",
+    "model": "claude-sonnet-4-20250514",
+    "temperature": 0.3,
+    "maxTokensBudget": 120000
+  },
+  "interview": {
+    "maxQuestions": 8,
+    "adaptiveFollowUp": true,
+    "language": "en"
   }
 }
 ```
 
-API key resolution order:
+## Supported Stacks
 
-1. `llm.apiKey` (from config)
-2. Provider-specific key env:
-   - `OPENAI_API_KEY` (`openai`, `openai-compatible`)
-   - `ANTHROPIC_API_KEY` (`anthropic`)
-   - `AZURE_OPENAI_API_KEY` (`azure`)
-3. `FORGEMIND_LLM_API_KEY` (generic fallback)
+- **TypeScript / JavaScript** — NestJS, NextJS, React
+- **PHP** — Laravel
+- **Python** — Django, Flask, FastAPI
+- **Go** — Gin, Echo
+- **Rust, Java/Kotlin, Ruby** — Spring, Rails (detection)
 
-Base URL resolution order:
+## LLM Providers
 
-1. `llm.baseUrl` (from config)
-2. `FORGEMIND_LLM_BASE_URL`
-
-Security notes:
-
-- Never commit API keys in repository files.
-- Prefer env vars in CI.
-- ForgeMind never logs API key values.
-
-If no key is present, scan degrades gracefully to deterministic template output.
-
-Validation hardening:
-
-- `contract.json` is validated against internal ARRC schema
-- `fingerprint.json` is validated against internal schema
-- `policies/checklist.json` is validated against internal schema
-- `policies/checklist.json` must include all required governance IDs with coherent path/status
-- `arrcVersion` compatibility is enforced (`1.0.0`)
-- `contract.json` fingerprint metadata must match `fingerprint.json`
-- `contract.json` embedded fingerprint `generatedAt` must match `fingerprint.json`
-- `contract.generatedAt` must be greater than or equal to `fingerprint.generatedAt`
-- `contract.json` scanSummary languages and frameworks must match the current repository scan
-- `contract.json` scanSummary dependency files must match the current repository scan
-- fingerprint ignores dotfiles and temporary files by default (`.*`, `*.tmp`, `*.temp`, `*.swp`, `*.swo`, `*.bak`, `*~`)
-- `templateOverrides` keys are strictly validated against supported keys
-
-Supported `templateOverrides` keys:
-
-- `docs.agentFirst`
-- `docs.architecture`
-- `prompts.review`
-- `prompts.feature`
-- `prompts.refactor`
-- `prompts.troubleshooting`
-- `policies.checklist`
-- `ai.contract`
-
-Template placeholders:
-
-- `{{scan.languages}}`
-- `{{scan.frameworks}}`
-- `{{scan.signals}}`
-- `{{scan.structure.topLevel}}`
-- `{{scan.dependencies.files}}`
-- `{{compliance.level}}`
-- `{{rootPath}}`
-
-Current contract includes:
-
-- `arrcVersion` (protocol version)
-- `version` (artifact version)
-- `complianceLevel`
-- `scanSummary`
-- `fingerprint`
-
-## Project Roadmap
-
-### Phase 1 — Core Governance Engine (MVP)
-
-- [x] CLI (`init`, `scan`, `validate`)
-- [x] Repository scanner (heuristic-based)
-- [x] Template-based documentation generator
-- [x] Prompt pack generator
-- [x] AI contract metadata file
-- [x] Fingerprint hash generation
-- [x] Internal ARRC schema validation
-- [x] Validation mode with exit codes
-- [x] Config file support (`forgemind.config.json`)
-- [x] Real-world dogfooding artifacts committed (`ai/`, `docs/`, `prompts/`, `policies/`)
-
-No LLM integration.
-
-Deterministic and reliable.
-
-### Phase 2 — Optional LLM Enrichment Layer
-
-Add pluggable LLM support:
-
-- [x] Provider interface
-- [x] Repo Facts JSON
-- [x] Architecture/document enrichment mode
-- [x] Context-aware prompt enrichment mode
-- [x] Structured/schema-validated AI responses
-
-Supported providers (planned):
-
-- [x] OpenAI
-- [ ] Azure OpenAI
-- [ ] Anthropic
-- [ ] Local models
-
-LLM integration remains optional.
-
-### Phase 2 Safety Model
-
-- LLM integration is strictly optional and disabled by default.
-- `validate` remains 100% deterministic and performs no network calls.
-- LLM output is enrichment-only and non-authoritative.
-- Core contract integrity (`ai/contract.json`, `ai/fingerprint.json`) remains deterministic.
-- If provider setup fails or request fails, scan continues with template-based output (unless `--llm-strict` is used).
-- Fingerprint hashing ignores LLM blocks in docs, preserving deterministic drift checks.
-- LLM output must pass the internal structured response schema before merge.
-
-### Local LLM Setup (OpenAI-Compatible)
-
-Use any OpenAI-compatible endpoint (e.g. local gateway):
-
-```json
-{
-  "llm": {
-    "enabled": true,
-    "provider": "openai-compatible",
-    "baseUrl": "http://localhost:11434/v1",
-    "model": "your-local-model",
-    "temperature": 0.2
-  }
-}
-```
-
-Then run:
+| Provider | Env Variable | Model Default |
+|---|---|---|
+| Anthropic (default) | `ANTHROPIC_API_KEY` | `claude-sonnet-4-20250514` |
+| OpenAI | `OPENAI_API_KEY` | `gpt-4o` |
+| Gemini | `GEMINI_API_KEY` | `gemini-2.0-flash` |
+| OpenAI-compatible | `OPENAI_API_KEY` + `OPENAI_BASE_URL` | — |
 
 ```bash
-forgemind scan --llm openai-compatible
+# Use a different provider
+forgemind forge --llm openai
+forgemind forge --llm gemini
 ```
 
-Optional fail-fast mode:
+## CLI Commands
 
-```bash
-forgemind scan --llm openai-compatible --llm-strict
+| Command | Description |
+|---|---|
+| `forgemind init` | Initialize config and directory structure |
+| `forgemind forge` | Run the full context engineering pipeline |
+| `forgemind interview` | Run only the interactive interview |
+| `forgemind generate` | Generate docs from existing intermediate data |
+
+### Global Options
+
+```
+-r, --root <path>    Repository root path (default: cwd)
+-c, --config <path>  Config file path
+--json               Output in JSON format
+-v, --verbose        Enable verbose output
 ```
 
-### Determinism Guarantee
+## Intermediate Data
 
-- Deterministic scan/contract/fingerprint pipeline remains authoritative.
-- `validate` does not call providers and remains network-free.
-- LLM enrichment block replacement is idempotent across multiple runs.
-- JSON governance artifacts are serialized with stable key ordering.
-- Path normalization and hashing remain cross-platform stable.
+ForgeMind persists intermediate results in `ai/` (configurable) so you can:
 
-### npm Release Readiness Checklist
+- Re-run document generation without re-scanning
+- Resume an interrupted interview
+- Inspect the signals, hypotheses, and consolidated knowledge
 
-- [x] Build output isolated in `dist/`
-- [x] CLI entrypoint configured in `package.json`
-- [x] Typed public exports configured (`exports`, `types`)
-- [x] Prepublish checks (`release:check`, `prepublishOnly`)
-- [x] Changelog structure added (`CHANGELOG.md`)
-- [x] Semver version field maintained in `package.json`
+Files: `signals.json`, `samples.json`, `hypotheses.json`, `interview.json`, `context.json`
 
-### Phase 3 — Advanced Governance
+## Architecture
 
-- [ ] Plugin system (Nest, Laravel, React Native, etc.)
-- [ ] Official GitHub Action wrapper
-- [ ] Prompt pack versioning
-- [ ] Compliance levels (L1, L2, L3)
-- [ ] PR auto-comment reports
-- [ ] AI-Readiness badge
-- [ ] Enterprise governance mode
+```
+src/
+  cli/                    # Commander.js CLI
+  core/
+    analyzer/             # SignalAnalyzer + CodeSampler
+    config/               # Config loader + defaults
+    consolidator/         # SemanticConsolidator
+    generators/documents/ # DocumentGenerator + RedundancyFilter
+    intelligence/         # HypothesisEngine + prompts
+    interview/            # InterviewEngine + Renderer
+    orchestrator/         # ContextPipeline (main)
+    scanner/              # RepositoryScanner + detectors
+    types/                # All type definitions
+  llm/                    # Provider interface + implementations
+  utils/                  # FileSystem, hashing, logger, paths
+```
 
-## Architecture Overview
+## Requirements
 
-ForgeMind is built with:
-
-- Node.js
-- TypeScript
-- Modular architecture
-- Clean separation of concerns
-
-Core modules:
-
-- Repository Scanner
-- Documentation Generator
-- Prompt Generator
-- Policy Engine
-- Contract Manager
-- CLI Interface
-
-Future-ready for LLM integration.
-
-## Not a Linter
-
-ForgeMind does not:
-
-- Analyze code smells
-- Measure complexity
-- Replace ESLint
-- Replace SonarQube
-- Perform security scanning
-
-It validates the AI governance layer only.
-
-## Vision
-
-ForgeMind defines the foundation for AI-native repositories.
-
-Instead of adapting AI to messy codebases, we adapt repositories to intelligent systems.
+- Node.js >= 20
+- An LLM API key (Anthropic recommended)
 
 ## License
 
