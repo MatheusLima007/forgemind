@@ -28,6 +28,10 @@
     "temperature": 0.3,
     "maxTokensBudget": 120000
   },
+  "qualityGate": {
+    "minConfidence": 0.65,
+    "maxPendingRatio": 0.45
+  },
   "interview": {
     "maxQuestions": 8,
     "adaptiveFollowUp": true,

@@ -11,21 +11,22 @@ afterEach(async () => {
 });
 
 describe("loadConfig", () => {
-  it("throws on unsupported template override keys", async () => {
+  it("loads default config when unknown fields are provided", async () => {
     const root = await mkdtemp(join(tmpdir(), "forgemind-config-"));
     createdDirs.push(root);
 
     await writeFile(
       join(root, "forgemind.config.json"),
       JSON.stringify({
-        templateOverrides: {
-          "docs.invalidKey": "templates/invalid.md"
+        unknownField: {
+          key: "value"
         }
       }),
       "utf-8"
     );
 
-    await expect(loadConfig(root)).rejects.toThrow("is not a supported override key");
+    const config = await loadConfig(root);
+    expect(config.outputPath).toBe("docs");
   });
 
   it("accepts openai-compatible provider config", async () => {
@@ -69,5 +70,23 @@ describe("loadConfig", () => {
     );
 
     await expect(loadConfig(root)).rejects.toThrow("llm.baseUrl must be a non-empty string");
+  });
+
+  it("throws when qualityGate.maxPendingRatio is invalid", async () => {
+    const root = await mkdtemp(join(tmpdir(), "forgemind-config-quality-gate-"));
+    createdDirs.push(root);
+
+    await writeFile(
+      join(root, "forgemind.config.json"),
+      JSON.stringify({
+        qualityGate: {
+          minConfidence: 0.6,
+          maxPendingRatio: 1.5
+        }
+      }),
+      "utf-8"
+    );
+
+    await expect(loadConfig(root)).rejects.toThrow("qualityGate.maxPendingRatio must be a number between 0 and 1");
   });
 });

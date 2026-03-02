@@ -1,69 +1,141 @@
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
-import { defaultConfig } from "../../src/core/config/defaults.js";
-import { GeneratePipeline } from "../../src/core/orchestrator/generatePipeline.js";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { Command } from "commander";
+import type { ForgemindConfig, ForgeResult } from "../../src/core/types/index.js";
+import { TokenBudgetExceededError } from "../../src/core/errors/pipelineErrors.js";
+import { EXIT_CODES } from "../../src/cli/exitCodes.js";
 
-const createdDirs: string[] = [];
-
-afterEach(async () => {
-  await Promise.all(createdDirs.splice(0).map((path) => rm(path, { recursive: true, force: true })));
+const { runMock, loadConfigMock } = vi.hoisted(() => {
+  return {
+    runMock: vi.fn(),
+    loadConfigMock: vi.fn()
+  };
 });
 
-describe("GeneratePipeline", () => {
-  it("generates all core artifacts with llm none and deterministic fallback", async () => {
-    const root = await mkdtemp(join(tmpdir(), "forgemind-generate-"));
-    createdDirs.push(root);
+vi.mock("../../src/core/orchestrator/contextPipeline.js", () => {
+  return {
+    ContextPipeline: vi.fn().mockImplementation(() => ({
+      run: runMock
+    }))
+  };
+});
 
-    await mkdir(join(root, "src"), { recursive: true });
-    await writeFile(join(root, "package.json"), JSON.stringify({ name: "fixture", dependencies: { "@nestjs/core": "^10.0.0" } }), "utf-8");
-    await writeFile(
-      join(root, "src", "app.module.ts"),
-      "import { Module } from '@nestjs/common';\n@Module({})\nexport class AppModule {}\n",
-      "utf-8"
-    );
-    await writeFile(
-      join(root, "src", "app.controller.ts"),
-      "import { Controller, Get } from '@nestjs/common';\n@Controller('health')\nexport class AppController {\n  @Get()\n  ping() { return 'ok'; }\n}\n",
-      "utf-8"
-    );
+vi.mock("../../src/core/config/configLoader.js", () => {
+  return {
+    loadConfig: loadConfigMock
+  };
+});
 
-    const pipeline = new GeneratePipeline();
-    const result = await pipeline.run(root, defaultConfig, { llmProviderName: "none", focus: "auto" });
+import { registerGenerateCommand } from "../../src/cli/commands/generate.js";
 
-    expect(result.qualityGate.passed).toBe(true);
-    expect(result.generatedFiles.length).toBeGreaterThanOrEqual(10);
+const configFixture: ForgemindConfig = {
+  outputPath: "docs",
+  intermediatePath: "ai",
+  ignoreDirs: [".git", "node_modules"],
+  ignoreFilePatterns: [".*"],
+  llm: {
+    provider: "openai",
+    model: "gpt-5-mini",
+    temperature: 0.2,
+    maxTokensBudget: 5000
+  },
+  qualityGate: {
+    minConfidence: 0.65,
+    maxPendingRatio: 0.45
+  },
+  interview: {
+    maxQuestions: 8,
+    adaptiveFollowUp: true,
+    language: "en"
+  }
+};
 
-    await expect(readFile(join(root, "ai", "candidates.json"), "utf-8")).resolves.toContain("files");
-    await expect(readFile(join(root, "ai", "profile.json"), "utf-8")).resolves.toContain("routingStyle");
-    await expect(readFile(join(root, "ai", "index.json"), "utf-8")).resolves.toContain("evidence");
-    await expect(readFile(join(root, "docs", "agent-first.md"), "utf-8")).resolves.toContain("## Evidence");
+const resultFixture: ForgeResult = {
+  rootPath: "/tmp/repo",
+  generatedFiles: ["/tmp/repo/docs/system-ontology.md"],
+  signals: [],
+  hypothesesCount: 2,
+  confirmedHypotheses: 1,
+  interviewCompleted: true,
+  documentsGenerated: ["system-ontology.md"],
+  evidenceMapEntries: 1,
+  domainCandidatesCount: 1,
+  unknownClaims: 0,
+  llmProvider: "openai",
+  llmModel: "gpt-5-mini",
+  tokenUsage: {
+    maxBudget: 5000,
+    used: 80,
+    remaining: 4920,
+    estimatedTotal: 80,
+    actualTotal: 80,
+    byStage: {}
+  },
+  qualityGate: {
+    total: 2,
+    accepted: 1,
+    needsReview: 1,
+    rejected: 0,
+    pendingRatio: 0.5,
+    blocked: false
+  },
+  knowledgeDiff: {
+    changed: true,
+    invariants: { added: 1, removed: 0, modified: 0 },
+    boundaries: {
+      allowed: { added: 0, removed: 0, modified: 0 },
+      prohibited: { added: 0, removed: 0, modified: 0 }
+    },
+    decisions: { added: 0, removed: 0, modified: 0 },
+    cognitiveRisks: { added: 0, removed: 0, modified: 0 }
+  },
+  duration: 42
+};
+
+afterEach(() => {
+  vi.clearAllMocks();
+  process.exitCode = 0;
+});
+
+function buildProgram(): Command {
+  const program = new Command();
+  program
+    .name("forgemind")
+    .option("-r, --root <path>", "Repository root path", process.cwd())
+    .option("-c, --config <path>", "Configuration file path")
+    .option("--json", "Output in JSON format", false)
+    .option("-v, --verbose", "Enable verbose output", false);
+
+  registerGenerateCommand(program);
+  return program;
+}
+
+describe("generate command", () => {
+  it("runs ContextPipeline with skipInterview=true", async () => {
+    loadConfigMock.mockResolvedValue(configFixture);
+    runMock.mockResolvedValue(resultFixture);
+
+    const program = buildProgram();
+    await program.parseAsync(["generate", "--root", "/tmp/repo", "--llm", "openai"], { from: "user" });
+
+    expect(loadConfigMock).toHaveBeenCalledWith("/tmp/repo", undefined);
+    expect(runMock).toHaveBeenCalledTimes(1);
+
+    const args = runMock.mock.calls[0];
+    expect(args[0]).toBe("/tmp/repo");
+    expect(args[1]).toEqual(configFixture);
+    expect(args[2]).toEqual({
+      providerOverride: "openai",
+      skipInterview: true
+    });
   });
 
-  it("fails quality gate when evidence threshold is not met", async () => {
-    const root = await mkdtemp(join(tmpdir(), "forgemind-generate-evidence-"));
-    createdDirs.push(root);
+  it("sets budget exit code when token budget is exhausted", async () => {
+    loadConfigMock.mockResolvedValue(configFixture);
+    runMock.mockRejectedValue(new TokenBudgetExceededError("hypotheses", 100, 10, 90));
 
-    await writeFile(join(root, "package.json"), JSON.stringify({ name: "fixture" }), "utf-8");
+    const program = buildProgram();
+    await program.parseAsync(["generate", "--root", "/tmp/repo"], { from: "user" });
 
-    const pipeline = new GeneratePipeline();
-    const result = await pipeline.run(
-      root,
-      {
-        ...defaultConfig,
-        generate: {
-          ...defaultConfig.generate,
-          evidence: {
-            required: true,
-            minPerSection: 100
-          }
-        }
-      },
-      { llmProviderName: "none", focus: "auto" }
-    );
-
-    expect(result.qualityGate.passed).toBe(false);
-    expect(result.qualityGate.errors.some((error) => error.includes("Evidence threshold"))).toBe(true);
+    expect(process.exitCode).toBe(EXIT_CODES.TOKEN_BUDGET_EXHAUSTED);
   });
 });

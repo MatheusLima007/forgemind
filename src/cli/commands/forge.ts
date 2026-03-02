@@ -4,6 +4,8 @@ import { loadConfig } from "../../core/config/configLoader.js";
 import { ContextPipeline } from "../../core/orchestrator/contextPipeline.js";
 import type { LLMProviderName } from "../../core/types/index.js";
 import { Logger } from "../../utils/logger.js";
+import { TokenBudgetExceededError, QualityGateBlockedError } from "../../core/errors/pipelineErrors.js";
+import { EXIT_CODES } from "../exitCodes.js";
 
 export function registerForgeCommand(program: Command): void {
   program
@@ -50,6 +52,9 @@ export function registerForgeCommand(program: Command): void {
             unknownClaims: result.unknownClaims,
             llmProvider: result.llmProvider,
             llmModel: result.llmModel,
+            tokenUsage: result.tokenUsage,
+            qualityGate: result.qualityGate,
+            knowledgeDiff: result.knowledgeDiff,
             duration: result.duration
           });
           return;
@@ -59,6 +64,12 @@ export function registerForgeCommand(program: Command): void {
         logger.info(`Hypotheses: ${result.hypothesesCount} (${result.confirmedHypotheses} confirmed)`);
         logger.info(`Interview: ${result.interviewCompleted ? "completed" : "skipped"}`);
         logger.info(`Documents: ${result.documentsGenerated.join(", ")}`);
+        logger.info(`Tokens: ${result.tokenUsage.used}/${result.tokenUsage.maxBudget}`);
+        logger.info(`Quality gate: needs-review ratio ${(result.qualityGate.pendingRatio * 100).toFixed(1)}%`);
+        logger.info(
+          `Knowledge diff: inv(+${result.knowledgeDiff.invariants.added}/-${result.knowledgeDiff.invariants.removed}/~${result.knowledgeDiff.invariants.modified}) ` +
+          `dec(+${result.knowledgeDiff.decisions.added}/-${result.knowledgeDiff.decisions.removed}/~${result.knowledgeDiff.decisions.modified})`
+        );
       } catch (error) {
         const message = error instanceof Error ? error.message : "Unknown error";
         if (options.json) {
@@ -66,7 +77,13 @@ export function registerForgeCommand(program: Command): void {
         } else {
           logger.error(message);
         }
-        process.exitCode = 1;
+        if (error instanceof TokenBudgetExceededError) {
+          process.exitCode = EXIT_CODES.TOKEN_BUDGET_EXHAUSTED;
+        } else if (error instanceof QualityGateBlockedError) {
+          process.exitCode = EXIT_CODES.QUALITY_GATE_BLOCKED;
+        } else {
+          process.exitCode = EXIT_CODES.GENERAL_ERROR;
+        }
       }
     });
 }

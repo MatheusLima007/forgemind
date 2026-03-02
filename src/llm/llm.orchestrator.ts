@@ -1,6 +1,7 @@
 import type { LLMConfig, LLMProviderName } from "../core/types/index.js";
 import type { LLMProvider } from "./provider.interface.js";
 import { createLLMProvider } from "./providerFactory.js";
+import { TokenBudgetEnforcer } from "../core/runtime/tokenBudgetEnforcer.js";
 
 export interface LLMOrchestratorOptions {
   config: LLMConfig;
@@ -17,9 +18,13 @@ export interface LLMOrchestratorOptions {
  */
 export class LLMOrchestrator {
   private provider: LLMProvider | null = null;
+  private budgetedProvider: LLMProvider | null = null;
   private skipReason?: string;
+  private readonly tokenBudgetEnforcer: TokenBudgetEnforcer;
 
-  constructor(private readonly options: LLMOrchestratorOptions) {}
+  constructor(private readonly options: LLMOrchestratorOptions) {
+    this.tokenBudgetEnforcer = new TokenBudgetEnforcer(options.config.maxTokensBudget);
+  }
 
   resolve(): { provider: LLMProvider | null; skipReason?: string } {
     if (this.provider) {
@@ -34,8 +39,12 @@ export class LLMOrchestrator {
   }
 
   getProvider(): LLMProvider {
-    const { provider, skipReason } = this.resolve();
-    if (!provider) {
+    if (this.budgetedProvider) {
+      return this.budgetedProvider;
+    }
+
+    const { provider: baseProvider, skipReason } = this.resolve();
+    if (!baseProvider) {
       throw new Error(
         `LLM provider is required but unavailable. Reason: ${skipReason ?? "unknown"}. ` +
         "ForgeMind requires an LLM provider to generate documentation. " +
@@ -43,7 +52,9 @@ export class LLMOrchestrator {
         "or configure llm.apiKey in forgemind.config.json."
       );
     }
-    return provider;
+
+    this.budgetedProvider = this.tokenBudgetEnforcer.wrapProvider(baseProvider);
+    return this.budgetedProvider;
   }
 
   getProviderName(): string {
@@ -52,5 +63,13 @@ export class LLMOrchestrator {
 
   getModelName(): string {
     return this.options.config.model;
+  }
+
+  setStage(stage: string): void {
+    this.tokenBudgetEnforcer.setStage(stage);
+  }
+
+  getTokenUsageReport() {
+    return this.tokenBudgetEnforcer.getReport();
   }
 }

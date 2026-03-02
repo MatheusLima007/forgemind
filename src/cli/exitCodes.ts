@@ -1,0 +1,5 @@
+export const EXIT_CODES = {
+  GENERAL_ERROR: 1,
+  TOKEN_BUDGET_EXHAUSTED: 20,
+  QUALITY_GATE_BLOCKED: 21
+} as const;

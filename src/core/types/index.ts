@@ -58,7 +58,7 @@ export interface CodeSample {
 // ── Hypotheses ────────────────────────────────────────────────
 
 export type HypothesisCategory = "ontology" | "domain" | "boundary" | "decision" | "risk" | "invariant";
-export type HypothesisStatus = "pending" | "confirmed" | "rejected";
+export type HypothesisStatus = "pending" | "needs-review" | "confirmed" | "rejected";
 
 export interface Hypothesis {
   id: string;
@@ -207,6 +207,53 @@ export interface SemanticContext {
   hypotheses: Hypothesis[];
   interviewSessions: InterviewSession[];
   consolidatedKnowledge: ConsolidatedKnowledge;
+  consolidatedKnowledgeHash?: string;
+}
+
+export interface TokenStageUsage {
+  estimated: number;
+  actual: number;
+  calls: number;
+}
+
+export interface TokenUsageReport {
+  maxBudget: number;
+  used: number;
+  remaining: number;
+  estimatedTotal: number;
+  actualTotal: number;
+  byStage: Record<string, TokenStageUsage>;
+}
+
+export interface HypothesisQualityGateThresholds {
+  minConfidence: number;
+  maxPendingRatio: number;
+}
+
+export interface HypothesisQualityGateSummary {
+  total: number;
+  accepted: number;
+  needsReview: number;
+  rejected: number;
+  pendingRatio: number;
+  blocked: boolean;
+}
+
+export interface KnowledgeDiffEntitySection {
+  added: number;
+  removed: number;
+  modified: number;
+}
+
+export interface KnowledgeDiffSummary {
+  changed: boolean;
+  invariants: KnowledgeDiffEntitySection;
+  boundaries: {
+    allowed: KnowledgeDiffEntitySection;
+    prohibited: KnowledgeDiffEntitySection;
+  };
+  decisions: KnowledgeDiffEntitySection;
+  cognitiveRisks: KnowledgeDiffEntitySection;
 }
 
 // ── LLM ───────────────────────────────────────────────────────
@@ -248,18 +295,37 @@ export interface InterviewConfig {
   language: string;
 }
 
+export interface QualityGateConfig {
+  minConfidence: number;
+  maxPendingRatio: number;
+}
+
 export interface ForgemindConfig {
   outputPath: string;
   intermediatePath: string;
   ignoreDirs: string[];
   ignoreFilePatterns?: string[];
   llm: LLMConfig;
+  qualityGate: QualityGateConfig;
   interview: InterviewConfig;
 }
 
 export interface GeneratorContext {
   scan: ScanResult;
   config: ForgemindConfig;
+}
+
+export interface RepoFacts {
+  languages: string[];
+  frameworks: string[];
+  topLevelStructure: string[];
+  dependencySummary: {
+    files: string[];
+    packageDependenciesCount: number;
+    composerDependenciesCount: number;
+  };
+  architecturalSignals: string[];
+  complianceLevel: "L1";
 }
 
 // ── Pipeline Result ───────────────────────────────────────────
@@ -277,5 +343,8 @@ export interface ForgeResult {
   unknownClaims: number;
   llmProvider: string;
   llmModel: string;
+  tokenUsage: TokenUsageReport;
+  qualityGate: HypothesisQualityGateSummary;
+  knowledgeDiff: KnowledgeDiffSummary;
   duration: number;
 }

@@ -4,6 +4,8 @@ import { loadConfig } from "../../core/config/configLoader.js";
 import { ContextPipeline } from "../../core/orchestrator/contextPipeline.js";
 import type { LLMProviderName } from "../../core/types/index.js";
 import { Logger } from "../../utils/logger.js";
+import { TokenBudgetExceededError, QualityGateBlockedError } from "../../core/errors/pipelineErrors.js";
+import { EXIT_CODES } from "../exitCodes.js";
 
 export function registerInterviewCommand(program: Command): void {
   program
@@ -41,6 +43,8 @@ export function registerInterviewCommand(program: Command): void {
             evidenceMapEntries: result.evidenceMapEntries,
             domainCandidatesCount: result.domainCandidatesCount,
             unknownClaims: result.unknownClaims,
+            tokenUsage: result.tokenUsage,
+            qualityGate: result.qualityGate,
             duration: result.duration
           });
           return;
@@ -54,7 +58,13 @@ export function registerInterviewCommand(program: Command): void {
         } else {
           logger.error(message);
         }
-        process.exitCode = 1;
+        if (error instanceof TokenBudgetExceededError) {
+          process.exitCode = EXIT_CODES.TOKEN_BUDGET_EXHAUSTED;
+        } else if (error instanceof QualityGateBlockedError) {
+          process.exitCode = EXIT_CODES.QUALITY_GATE_BLOCKED;
+        } else {
+          process.exitCode = EXIT_CODES.GENERAL_ERROR;
+        }
       }
     });
 }

@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { InterviewEngine } from "../../src/core/interview/interviewEngine.js";
 import type { ArchitecturalSignal, EvidenceEntry, Hypothesis, InterviewConfig, LLMRequest } from "../../src/core/types/index.js";
 
@@ -104,5 +104,41 @@ describe("InterviewEngine", () => {
 
     (engine as any).updateHypotheses(mutableHypotheses, question, "This is wrong in this repository", "custom");
     expect(mutableHypotheses[0].status).toBe("rejected");
+  });
+
+  it("supports existing answers with Enter continue, skip and edit", async () => {
+    const provider = new MockProvider();
+    const engine = new InterviewEngine(provider as never, interviewConfig) as any;
+
+    const question = {
+      id: "q-3",
+      category: "General",
+      question: "How does this work?",
+      context: "",
+      relatedHypotheses: [],
+      options: ["Option A", "Option B"],
+      priority: "important"
+    };
+
+    engine.promptInput = vi.fn().mockResolvedValueOnce("");
+    const kept = await engine.askQuestion({} as any, question, {
+      questionId: "q-3",
+      answer: "Existing answer",
+      selectedOption: 0,
+      source: "selected",
+      timestamp: new Date().toISOString()
+    });
+    expect(kept.answer).toBe("Existing answer");
+
+    engine.promptInput = vi.fn().mockResolvedValueOnce("e").mockResolvedValueOnce("2");
+    const edited = await engine.askQuestion({} as any, question, {
+      questionId: "q-3",
+      answer: "Old answer",
+      selectedOption: 0,
+      source: "selected",
+      timestamp: new Date().toISOString()
+    });
+    expect(edited.answer).toBe("Option B");
+    expect(edited.selectedOption).toBe(1);
   });
 });

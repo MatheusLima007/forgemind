@@ -70,6 +70,10 @@ forgemind generate
     "temperature": 0.3,
     "maxTokensBudget": 120000
   },
+  "qualityGate": {
+    "minConfidence": 0.65,
+    "maxPendingRatio": 0.45
+  },
   "interview": {
     "maxQuestions": 8,
     "adaptiveFollowUp": true,
@@ -127,7 +131,14 @@ ForgeMind persists intermediate results in `ai/` (configurable) so you can:
 - Resume an interrupted interview
 - Inspect the signals, hypotheses, and consolidated knowledge
 
-Files: `signals.json`, `samples.json`, `hypotheses.json`, `interview.json`, `context.json`
+Files: `signals.json`, `samples.json`, `hypotheses.json`, `evidence-map.json`, `interview.json`, `answers.json`, `context.json`, `knowledge-diff.json`
+
+## Phase 0 Runtime Behaviors
+
+- **Token budget enforcement**: every LLM call consults `llm.maxTokensBudget`; when exhausted, execution aborts with a clear error and non-zero exit code.
+- **Hypothesis quality gate**: hypotheses below `qualityGate.minConfidence` become `needs-review`; if `needs-review / total > qualityGate.maxPendingRatio`, consolidation is blocked until interview answers exist.
+- **Knowledge versioning & diff**: each run persists `consolidatedKnowledgeHash` in `ai/context.json` and generates `ai/knowledge-diff.json` with added/removed/modified items for invariants, boundaries, decisions, and cognitive risks.
+- **Interview persistence upgrades**: when answers exist, interview shows current answer with `[E]dit / [S]kip / Enter continue`; `ai/answers.json` is updated incrementally and deterministically.
 
 ## Architecture
 

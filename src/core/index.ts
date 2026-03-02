@@ -6,10 +6,16 @@ export * from "./analyzer/codeSampler.js";
 export * from "./mining/domainMiner.js";
 export * from "./mining/evidenceMapGenerator.js";
 export * from "./intelligence/hypothesisEngine.js";
+export * from "./intelligence/hypothesisQualityGate.js";
 export * from "./interview/interviewEngine.js";
 export * from "./consolidator/semanticConsolidator.js";
+export * from "./consolidator/knowledgeDiff.js";
 export * from "./generators/documents/documentGenerator.js";
 export * from "./generators/documents/redundancyFilter.js";
 export * from "./orchestrator/contextPipeline.js";
 export * from "./scanner/repositoryScanner.js";
+export * from "./runtime/tokenBudgetEnforcer.js";
+export * from "./errors/pipelineErrors.js";
+export * from "./validation/arrcSchema.js";
+export * from "./validation/llmResponseSchema.js";
 

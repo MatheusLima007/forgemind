@@ -58,6 +58,13 @@ export class InterviewRenderer {
     }
   }
 
+  renderExistingAnswer(answer: string): void {
+    console.log();
+    console.log(chalk.cyan("  Current answer:"));
+    console.log(chalk.gray(`  ${answer}`));
+    console.log(chalk.dim("  [E]dit / [S]kip / Enter continue"));
+  }
+
   renderSkip(): void {
     console.log(chalk.gray("  ↷ Skipped"));
   }

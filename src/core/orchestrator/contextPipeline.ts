@@ -1,6 +1,6 @@
 import { resolve } from "node:path";
 import { ensureDir, writeTextFile, readTextFile, fileExists } from "../../utils/fileSystem.js";
-import { stableStringify } from "../../utils/hashing.js";
+import { hashJson, stableStringify } from "../../utils/hashing.js";
 import { Logger } from "../../utils/logger.js";
 import type {
   ArchitecturalSignal,
@@ -12,6 +12,7 @@ import type {
   ForgeResult,
   Hypothesis,
   InterviewSession,
+  KnowledgeDiffSummary,
   LLMProviderName,
   SemanticContext,
   StructuredAnswer,
@@ -28,6 +29,9 @@ import { RedundancyFilter } from "../generators/documents/redundancyFilter.js";
 import { LLMOrchestrator } from "../../llm/llm.orchestrator.js";
 import { DomainMiner } from "../mining/domainMiner.js";
 import { EvidenceMapGenerator } from "../mining/evidenceMapGenerator.js";
+import { HypothesisQualityGate, shouldBlockConsolidation } from "../intelligence/hypothesisQualityGate.js";
+import { buildKnowledgeDiff } from "../consolidator/knowledgeDiff.js";
+import { QualityGateBlockedError } from "../errors/pipelineErrors.js";
 
 export interface ContextPipelineOptions {
   providerOverride?: LLMProviderName;
@@ -63,6 +67,10 @@ export class ContextPipeline {
     });
     const provider = orchestrator.getProvider();
     logger.success(`LLM: ${orchestrator.getProviderName()} / ${orchestrator.getModelName()}`);
+
+    const contextPath = resolve(intermediateDir, "context.json");
+    const previousContext = await this.loadCached<SemanticContext>(contextPath);
+    const previousKnowledge = previousContext?.consolidatedKnowledge ?? null;
 
     // 2. Scan repository
     logger.info("Scanning repository...");
@@ -132,13 +140,20 @@ export class ContextPipeline {
       hypotheses = cachedHypotheses.hypotheses;
       logger.debug(`Loaded ${hypotheses.length} cached hypotheses`);
     } else {
+      orchestrator.setStage("hypotheses");
       const hypothesisEngine = new HypothesisEngine(provider);
       hypotheses = await hypothesisEngine.generateHypotheses(scan, signals, samples, domainCandidates);
       await this.saveIntermediate(hypothesesPath, { hypotheses, generatedAt: new Date().toISOString(), forgemindVersion: FORGEMIND_VERSION });
     }
 
+    const qualityGate = new HypothesisQualityGate(config.qualityGate);
+    const qualityGateSummary = qualityGate.apply(hypotheses);
+
     const needsConfirmation = hypotheses.filter((h) => h.needsConfirmation).length;
     logger.success(`${hypotheses.length} hypotheses generated (${needsConfirmation} need confirmation)`);
+    logger.info(
+      `Quality gate: accepted=${qualityGateSummary.accepted}, needs-review=${qualityGateSummary.needsReview}, rejected=${qualityGateSummary.rejected}`
+    );
 
     // 7. Generate evidence map
     logger.info("Building evidence map...");
@@ -150,6 +165,7 @@ export class ContextPipeline {
       evidenceMap = cachedEvidenceMap.entries;
       logger.debug(`Loaded ${evidenceMap.length} cached evidence entries`);
     } else {
+      orchestrator.setStage("evidence-map");
       const evidenceGenerator = new EvidenceMapGenerator(provider);
       evidenceMap = await evidenceGenerator.generate(scan, hypotheses, signals, samples, domainCandidates);
       await this.saveIntermediate(evidenceMapPath, {
@@ -187,7 +203,17 @@ export class ContextPipeline {
 
       logger.info("Starting guided interview...");
       const interviewEngine = new InterviewEngine(provider, config.interview);
-      const session = await interviewEngine.conduct(hypotheses, signals, evidenceMap, domainCandidates);
+      orchestrator.setStage("interview");
+      const session = await interviewEngine.conduct(hypotheses, signals, evidenceMap, domainCandidates, {
+        existingAnswers: structuredAnswers,
+        onAnswerCaptured: async (answers) => {
+          await this.saveIntermediate(answersPath, {
+            answers,
+            generatedAt: new Date().toISOString(),
+            forgemindVersion: FORGEMIND_VERSION
+          });
+        }
+      });
       interviewSessions = [...interviewSessions, session];
       structuredAnswers = session.answers.map((answer) => ({
         questionId: answer.questionId,
@@ -204,6 +230,8 @@ export class ContextPipeline {
 
     // If interview-only mode, stop here
     if (options.interviewOnly) {
+      const tokenUsage = orchestrator.getTokenUsageReport();
+      this.logTokenUsage(logger, tokenUsage);
       return {
         rootPath,
         generatedFiles: [],
@@ -217,25 +245,40 @@ export class ContextPipeline {
         unknownClaims: evidenceMap.filter((entry) => entry.confidence === "unknown").length,
         llmProvider: orchestrator.getProviderName(),
         llmModel: orchestrator.getModelName(),
+        tokenUsage,
+        qualityGate: qualityGateSummary,
+        knowledgeDiff: emptyKnowledgeDiffSummary(),
         duration: Date.now() - startTime
       };
     }
 
+    if (shouldBlockConsolidation(qualityGateSummary, structuredAnswers.length > 0)) {
+      throw new QualityGateBlockedError(qualityGateSummary.pendingRatio, config.qualityGate.maxPendingRatio);
+    }
+
     // 9. Consolidate knowledge
     logger.info("Consolidating semantic knowledge...");
+    orchestrator.setStage("consolidation");
     const consolidator = new SemanticConsolidator(provider);
     const knowledge = await consolidator.consolidate(scan, signals, hypotheses, interviewSessions, evidenceMap, structuredAnswers);
 
+    const generatedAt = new Date().toISOString();
+    const knowledgeHash = hashJson(knowledge);
+    const knowledgeDiffArtifact = buildKnowledgeDiff(previousKnowledge, knowledge, generatedAt);
+    const knowledgeDiffPath = resolve(intermediateDir, "knowledge-diff.json");
+    await this.saveIntermediate(knowledgeDiffPath, knowledgeDiffArtifact);
+    logger.success("Knowledge diff generated: ai/knowledge-diff.json");
+
     // Save semantic context
-    const contextPath = resolve(intermediateDir, "context.json");
     const semanticContext: SemanticContext = {
       version: "1.0.0",
       forgemindVersion: FORGEMIND_VERSION,
-      generatedAt: new Date().toISOString(),
+      generatedAt,
       signals,
       hypotheses,
       interviewSessions,
-      consolidatedKnowledge: knowledge
+      consolidatedKnowledge: knowledge,
+      consolidatedKnowledgeHash: knowledgeHash
     };
     await this.saveIntermediate(contextPath, semanticContext);
     logger.success("Knowledge consolidated");
@@ -249,12 +292,14 @@ export class ContextPipeline {
 
     // 10. Generate documents
     logger.info("Generating agent-first documentation...");
+    orchestrator.setStage("document-generation");
     const docGenerator = new DocumentGenerator(provider);
     const rawDocuments = await docGenerator.generateAll(knowledge, scan, evidenceMap);
     logger.success(`${rawDocuments.size} documents generated`);
 
     // 11. Filter redundancy
     logger.info("Filtering redundant content...");
+    orchestrator.setStage("redundancy-filter");
     const redundancyFilter = new RedundancyFilter(provider);
     const filteredDocuments = await redundancyFilter.filterAll(rawDocuments);
     logger.success("Redundancy filter applied");
@@ -276,6 +321,16 @@ export class ContextPipeline {
     }
 
     const duration = Date.now() - startTime;
+    const tokenUsage = orchestrator.getTokenUsageReport();
+    this.logTokenUsage(logger, tokenUsage);
+
+    logger.info(
+      `Knowledge diff: invariants (+${knowledgeDiffArtifact.summary.invariants.added}/-${knowledgeDiffArtifact.summary.invariants.removed}/~${knowledgeDiffArtifact.summary.invariants.modified}), ` +
+      `boundaries (+${knowledgeDiffArtifact.summary.boundaries.allowed.added + knowledgeDiffArtifact.summary.boundaries.prohibited.added}/-` +
+      `${knowledgeDiffArtifact.summary.boundaries.allowed.removed + knowledgeDiffArtifact.summary.boundaries.prohibited.removed}/~` +
+      `${knowledgeDiffArtifact.summary.boundaries.allowed.modified + knowledgeDiffArtifact.summary.boundaries.prohibited.modified}), ` +
+      `decisions (+${knowledgeDiffArtifact.summary.decisions.added}/-${knowledgeDiffArtifact.summary.decisions.removed}/~${knowledgeDiffArtifact.summary.decisions.modified})`
+    );
     logger.success(`\nForgeMind complete in ${(duration / 1000).toFixed(1)}s`);
 
     return {
@@ -291,6 +346,9 @@ export class ContextPipeline {
       unknownClaims: evidenceMap.filter((entry) => entry.confidence === "unknown").length,
       llmProvider: orchestrator.getProviderName(),
       llmModel: orchestrator.getModelName(),
+      tokenUsage,
+      qualityGate: qualityGateSummary,
+      knowledgeDiff: knowledgeDiffArtifact.summary,
       duration
     };
   }
@@ -310,4 +368,24 @@ export class ContextPipeline {
   private async saveIntermediate(path: string, data: unknown): Promise<void> {
     await writeTextFile(path, stableStringify(data));
   }
+
+  private logTokenUsage(logger: Logger, report: ForgeResult["tokenUsage"]): void {
+    logger.info(`Token usage: used=${report.used}/${report.maxBudget}, estimated=${report.estimatedTotal}, actual=${report.actualTotal}`);
+    for (const [stage, usage] of Object.entries(report.byStage).sort(([a], [b]) => a.localeCompare(b))) {
+      logger.debug(`tokens[${stage}] calls=${usage.calls} estimated=${usage.estimated} actual=${usage.actual}`);
+    }
+  }
+}
+
+function emptyKnowledgeDiffSummary(): KnowledgeDiffSummary {
+  return {
+    changed: false,
+    invariants: { added: 0, removed: 0, modified: 0 },
+    boundaries: {
+      allowed: { added: 0, removed: 0, modified: 0 },
+      prohibited: { added: 0, removed: 0, modified: 0 }
+    },
+    decisions: { added: 0, removed: 0, modified: 0 },
+    cognitiveRisks: { added: 0, removed: 0, modified: 0 }
+  };
 }

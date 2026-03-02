@@ -4,6 +4,8 @@ import { loadConfig } from "../../core/config/configLoader.js";
 import { ContextPipeline } from "../../core/orchestrator/contextPipeline.js";
 import type { LLMProviderName } from "../../core/types/index.js";
 import { Logger } from "../../utils/logger.js";
+import { TokenBudgetExceededError, QualityGateBlockedError } from "../../core/errors/pipelineErrors.js";
+import { EXIT_CODES } from "../exitCodes.js";
 
 export function registerGenerateCommand(program: Command): void {
   program
@@ -42,6 +44,9 @@ export function registerGenerateCommand(program: Command): void {
             unknownClaims: result.unknownClaims,
             llmProvider: result.llmProvider,
             llmModel: result.llmModel,
+            tokenUsage: result.tokenUsage,
+            qualityGate: result.qualityGate,
+            knowledgeDiff: result.knowledgeDiff,
             duration: result.duration
           });
           return;
@@ -58,7 +63,13 @@ export function registerGenerateCommand(program: Command): void {
         } else {
           logger.error(message);
         }
-        process.exitCode = 1;
+        if (error instanceof TokenBudgetExceededError) {
+          process.exitCode = EXIT_CODES.TOKEN_BUDGET_EXHAUSTED;
+        } else if (error instanceof QualityGateBlockedError) {
+          process.exitCode = EXIT_CODES.QUALITY_GATE_BLOCKED;
+        } else {
+          process.exitCode = EXIT_CODES.GENERAL_ERROR;
+        }
       }
     });
 }

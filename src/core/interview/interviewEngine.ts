@@ -10,6 +10,7 @@ import type {
   InterviewSession,
   InterviewConfig,
   LLMRequest,
+  StructuredAnswer,
 } from "../types/index.js";
 import type { LLMProvider } from "../../llm/provider.interface.js";
 import { INTERVIEW_SYSTEM_PROMPT } from "../intelligence/prompts/hypothesisPrompts.js";
@@ -30,8 +31,15 @@ export class InterviewEngine {
     hypotheses: Hypothesis[],
     signals: ArchitecturalSignal[],
     evidenceMap: EvidenceEntry[] = [],
-    domainCandidates: DomainCandidate[] = []
+    domainCandidates: DomainCandidate[] = [],
+    options: {
+      existingAnswers?: StructuredAnswer[];
+      onAnswerCaptured?: (answers: StructuredAnswer[]) => Promise<void>;
+    } = {}
   ): Promise<InterviewSession> {
+    const existingAnswersMap = new Map((options.existingAnswers ?? []).map((answer) => [answer.questionId, answer]));
+    const currentAnswersMap = new Map(existingAnswersMap);
+
     const session: InterviewSession = {
       id: generateSessionId(),
       version: "1.0.0",
@@ -63,7 +71,8 @@ export class InterviewEngine {
 
         this.renderer.renderQuestion(question, i + 1, maxQuestions);
 
-        const answer = await this.askQuestion(rl, question);
+        const currentAnswer = currentAnswersMap.get(question.id);
+        const answer = await this.askQuestion(rl, question, currentAnswer);
 
         if (answer.answer === "/done") {
           this.renderer.renderEarlyExit(i + 1);
@@ -84,6 +93,19 @@ export class InterviewEngine {
         };
 
         session.answers.push(interviewAnswer);
+        currentAnswersMap.set(question.id, {
+          questionId: question.id,
+          answer: interviewAnswer.answer,
+          selectedOption: interviewAnswer.selectedOption,
+          source: interviewAnswer.source ?? "custom",
+          timestamp: interviewAnswer.timestamp
+        });
+
+        if (options.onAnswerCaptured) {
+          await options.onAnswerCaptured(
+            [...currentAnswersMap.values()].sort((a, b) => a.questionId.localeCompare(b.questionId))
+          );
+        }
 
         // Update hypothesis status based on answer
         this.updateHypotheses(hypotheses, question, answer.answer, answer.source);
@@ -224,29 +246,55 @@ export class InterviewEngine {
 
   private async askQuestion(
     rl: ReadlineInterface,
-    question: InterviewQuestion
+    question: InterviewQuestion,
+    currentAnswer?: StructuredAnswer
   ): Promise<{ answer: string; selectedOption?: number; source?: "selected" | "custom" }> {
+    if (currentAnswer) {
+      this.renderer.renderExistingAnswer(currentAnswer.answer);
+      const reviewChoice = await this.promptInput(rl, "\n> ");
+      const normalizedChoice = reviewChoice.trim().toLowerCase();
+
+      if (normalizedChoice === "" || normalizedChoice === "s" || normalizedChoice === "skip") {
+        return {
+          answer: currentAnswer.answer,
+          selectedOption: currentAnswer.selectedOption,
+          source: currentAnswer.source
+        };
+      }
+
+      if (normalizedChoice !== "e" && normalizedChoice !== "edit") {
+        return {
+          answer: currentAnswer.answer,
+          selectedOption: currentAnswer.selectedOption,
+          source: currentAnswer.source
+        };
+      }
+    }
+
+    const rawInput = await this.promptInput(rl, "\n> ");
+    const trimmed = rawInput.trim();
+    if (trimmed === "/skip" || trimmed === "/done") {
+      return { answer: trimmed };
+    }
+
+    if (Array.isArray(question.options) && question.options.length > 0) {
+      const numericChoice = Number.parseInt(trimmed, 10);
+      if (!Number.isNaN(numericChoice) && numericChoice >= 1 && numericChoice <= question.options.length) {
+        return {
+          answer: question.options[numericChoice - 1],
+          selectedOption: numericChoice - 1,
+          source: "selected"
+        };
+      }
+    }
+
+    return { answer: trimmed, source: "custom" };
+  }
+
+  private async promptInput(rl: ReadlineInterface, prompt: string): Promise<string> {
     return new Promise((resolve) => {
-      rl.question("\n> ", (answer) => {
-        const trimmed = answer.trim();
-        if (trimmed === "/skip" || trimmed === "/done") {
-          resolve({ answer: trimmed });
-          return;
-        }
-
-        if (Array.isArray(question.options) && question.options.length > 0) {
-          const numericChoice = Number.parseInt(trimmed, 10);
-          if (!Number.isNaN(numericChoice) && numericChoice >= 1 && numericChoice <= question.options.length) {
-            resolve({
-              answer: question.options[numericChoice - 1],
-              selectedOption: numericChoice - 1,
-              source: "selected"
-            });
-            return;
-          }
-        }
-
-        resolve({ answer: trimmed, source: "custom" });
+      rl.question(prompt, (answer) => {
+        resolve(answer);
       });
     });
   }

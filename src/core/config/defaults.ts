@@ -13,6 +13,10 @@ export const defaultConfig: ForgemindConfig = {
     temperature: 0.3,
     maxTokensBudget: 30000
   },
+  qualityGate: {
+    minConfidence: 0.65,
+    maxPendingRatio: 0.45
+  },
   interview: {
     maxQuestions: 15,
     adaptiveFollowUp: true,

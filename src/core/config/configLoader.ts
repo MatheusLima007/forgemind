@@ -60,6 +60,14 @@ function assertValidConfig(config: ForgemindConfig): void {
     throw new Error("Invalid config: llm.maxTokensBudget must be a number >= 1000");
   }
 
+  if (typeof config.qualityGate.minConfidence !== "number" || Number.isNaN(config.qualityGate.minConfidence) || config.qualityGate.minConfidence < 0 || config.qualityGate.minConfidence > 1) {
+    throw new Error("Invalid config: qualityGate.minConfidence must be a number between 0 and 1");
+  }
+
+  if (typeof config.qualityGate.maxPendingRatio !== "number" || Number.isNaN(config.qualityGate.maxPendingRatio) || config.qualityGate.maxPendingRatio < 0 || config.qualityGate.maxPendingRatio > 1) {
+    throw new Error("Invalid config: qualityGate.maxPendingRatio must be a number between 0 and 1");
+  }
+
   // Interview config validation
   if (typeof config.interview.maxQuestions !== "number" || config.interview.maxQuestions < 1 || config.interview.maxQuestions > 50) {
     throw new Error("Invalid config: interview.maxQuestions must be a number between 1 and 50");
@@ -101,6 +109,10 @@ export async function loadConfig(rootPath: string, explicitPath?: string): Promi
       apiKey: parsed.llm?.apiKey ?? defaultConfig.llm.apiKey,
       baseUrl: parsed.llm?.baseUrl ?? defaultConfig.llm.baseUrl,
       maxTokensBudget: parsed.llm?.maxTokensBudget ?? defaultConfig.llm.maxTokensBudget
+    },
+    qualityGate: {
+      minConfidence: parsed.qualityGate?.minConfidence ?? defaultConfig.qualityGate.minConfidence,
+      maxPendingRatio: parsed.qualityGate?.maxPendingRatio ?? defaultConfig.qualityGate.maxPendingRatio
     },
     interview: {
       maxQuestions: parsed.interview?.maxQuestions ?? defaultConfig.interview.maxQuestions,
