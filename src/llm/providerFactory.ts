@@ -1,18 +1,12 @@
 import type { LLMConfig, LLMProviderName } from "../core/types/index.js";
 import { AnthropicProvider } from "./anthropic.provider.js";
-import { AzureProvider } from "./azure.provider.js";
-import { LocalProvider } from "./local.provider.js";
+import { GeminiProvider } from "./gemini.provider.js";
 import { OpenAIProvider } from "./openai.provider.js";
 import type { LLMProvider } from "./provider.interface.js";
 
 export interface LLMProviderResolution {
   provider: LLMProvider | null;
   skipReason?: string;
-}
-
-export interface ResolvedProviderRuntime {
-  apiKey?: string;
-  baseUrl?: string;
 }
 
 function resolveBaseUrl(config: LLMConfig): string | undefined {
@@ -27,7 +21,7 @@ function resolveBaseUrl(config: LLMConfig): string | undefined {
   return undefined;
 }
 
-function resolveProviderApiKey(config: LLMConfig, providerName: Exclude<LLMProviderName, "none">): string | undefined {
+function resolveApiKey(config: LLMConfig, providerName: Exclude<LLMProviderName, "none">): string | undefined {
   if (config.apiKey && config.apiKey.trim() !== "") {
     return config.apiKey;
   }
@@ -44,80 +38,77 @@ function resolveProviderApiKey(config: LLMConfig, providerName: Exclude<LLMProvi
     return process.env.AZURE_OPENAI_API_KEY ?? process.env.FORGEMIND_LLM_API_KEY;
   }
 
+  if (providerName === "gemini") {
+    return process.env.GEMINI_API_KEY ?? process.env.GOOGLE_API_KEY ?? process.env.FORGEMIND_LLM_API_KEY;
+  }
+
   return process.env.FORGEMIND_LLM_API_KEY;
 }
 
-export function resolveProviderRuntime(config: LLMConfig, providerName: Exclude<LLMProviderName, "none">): ResolvedProviderRuntime {
-  return {
-    apiKey: resolveProviderApiKey(config, providerName),
-    baseUrl: resolveBaseUrl(config)
-  };
-}
+export function createLLMProvider(config: LLMConfig, providerOverride?: LLMProviderName): LLMProviderResolution {
+  const providerName = providerOverride ?? config.provider;
 
-export function createLLMProvider(config: LLMConfig | undefined, providerName: LLMProviderName): LLMProviderResolution {
   if (providerName === "none") {
     return { provider: null, skipReason: "provider-none" };
   }
 
-  if (!config || !config.enabled) {
-    return { provider: null, skipReason: "llm-disabled" };
-  }
+  if (providerName === "openai" || providerName === "openai-compatible") {
+    const apiKey = resolveApiKey(config, providerName);
 
-  const effectiveProvider = providerName;
-
-  if (effectiveProvider === "openai" || effectiveProvider === "openai-compatible") {
-    const runtime = resolveProviderRuntime(config, effectiveProvider);
-
-    if (effectiveProvider === "openai" && !runtime.apiKey) {
+    if (providerName === "openai" && !apiKey) {
       return { provider: null, skipReason: "missing-api-key" };
     }
 
-    if (effectiveProvider === "openai-compatible" && !runtime.baseUrl) {
+    const baseUrl = resolveBaseUrl(config) ?? "https://api.openai.com/v1";
+
+    if (providerName === "openai-compatible" && !resolveBaseUrl(config)) {
       return { provider: null, skipReason: "missing-base-url" };
     }
 
-    const baseUrl = runtime.baseUrl ?? "https://api.openai.com/v1";
-
     return {
       provider: new OpenAIProvider({
-        apiKey: runtime.apiKey,
+        apiKey,
         model: config.model,
         temperature: config.temperature,
         baseUrl,
-        providerName: effectiveProvider
+        providerName
       })
     };
   }
 
-  if (effectiveProvider === "anthropic") {
-    const runtime = resolveProviderRuntime(config, "anthropic");
-    if (!runtime.apiKey) {
+  if (providerName === "anthropic") {
+    const apiKey = resolveApiKey(config, "anthropic");
+    if (!apiKey) {
       return { provider: null, skipReason: "missing-api-key" };
     }
 
-    return { provider: new AnthropicProvider() };
+    return {
+      provider: new AnthropicProvider({
+        apiKey,
+        model: config.model,
+        temperature: config.temperature
+      })
+    };
   }
 
-  if (effectiveProvider === "azure") {
-    const runtime = resolveProviderRuntime(config, "azure");
-    if (!runtime.apiKey) {
+  if (providerName === "gemini") {
+    const apiKey = resolveApiKey(config, "gemini");
+    if (!apiKey) {
       return { provider: null, skipReason: "missing-api-key" };
     }
 
-    if (!runtime.baseUrl) {
-      return { provider: null, skipReason: "missing-base-url" };
-    }
-
-    return { provider: new AzureProvider() };
+    return {
+      provider: new GeminiProvider({
+        apiKey,
+        model: config.model,
+        temperature: config.temperature
+      })
+    };
   }
 
-  if (effectiveProvider === "local") {
-    const runtime = resolveProviderRuntime(config, "local");
-    if (!runtime.baseUrl) {
-      return { provider: null, skipReason: "missing-base-url" };
-    }
-
-    return { provider: new LocalProvider() };
+  // azure and local are not yet supported
+  if (providerName === "azure" || providerName === "local") {
+    return { provider: null, skipReason: `${providerName}-not-implemented` };
   }
 
   return { provider: null, skipReason: "unsupported-provider" };

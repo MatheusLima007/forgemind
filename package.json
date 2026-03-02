@@ -1,7 +1,7 @@
 {
   "name": "forgemind",
-  "version": "0.1.0",
-  "description": "AI-Ready Repository Governance CLI toolkit",
+  "version": "0.2.0",
+  "description": "AI Context Engineering Engine — generates agent-first documentation via LLM-powered analysis",
   "license": "MIT",
   "type": "module",
   "main": "dist/index.js",
@@ -42,7 +42,8 @@
   },
   "dependencies": {
     "chalk": "^5.6.0",
-    "commander": "^14.0.1"
+    "commander": "^14.0.1",
+    "ts-morph": "^24.0.0"
   },
   "devDependencies": {
     "@eslint/js": "^9.34.0",

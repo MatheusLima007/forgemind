@@ -1,23 +1,21 @@
 import type { ForgemindConfig } from "../types/index.js";
 
+export const FORGEMIND_VERSION = "0.2.0";
+
 export const defaultConfig: ForgemindConfig = {
-  compliance: {
-    level: "L1"
-  },
-  outputPaths: {
-    docs: "docs",
-    prompts: "prompts",
-    policies: "policies",
-    ai: "ai"
-  },
-  ignoreDirs: [".git", "node_modules", "dist", "coverage"],
+  outputPath: "docs",
+  intermediatePath: "ai",
+  ignoreDirs: [".git", "node_modules", "dist", "coverage", "__pycache__", ".venv", "venv", "vendor", "target", "build"],
   ignoreFilePatterns: [".*", "*.tmp", "*.temp", "*.swp", "*.swo", "*.bak", "*~"],
-  templateOverrides: {},
   llm: {
-    enabled: false,
-    provider: "openai",
-    model: "gpt-5-mini",
-    temperature: 0.2,
-    baseUrl: "https://api.openai.com/v1"
+    provider: "anthropic",
+    model: "claude-sonnet-4-20250514",
+    temperature: 0.3,
+    maxTokensBudget: 30000
+  },
+  interview: {
+    maxQuestions: 15,
+    adaptiveFollowUp: true,
+    language: "en"
   }
 };

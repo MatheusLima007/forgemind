@@ -1,7 +1,7 @@
-import type { LLMInput, LLMOutput } from "../core/types/index.js";
+import type { LLMRequest, LLMResponse } from "../core/types/index.js";
 
 export interface LLMProvider {
-  generate(input: LLMInput): Promise<LLMOutput>;
+  chat(request: LLMRequest): Promise<LLMResponse>;
 }
 
 export class LLMProviderError extends Error {

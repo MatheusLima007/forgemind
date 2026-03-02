@@ -1,18 +1,17 @@
 {
-  "compliance": {
-    "level": "L1"
-  },
-  "outputPaths": {
-    "docs": "docs",
-    "prompts": "prompts",
-    "policies": "policies",
-    "ai": "ai"
-  },
+  "outputPath": "docs",
+  "intermediatePath": "ai",
   "ignoreDirs": [
     ".git",
     "node_modules",
     "dist",
-    "coverage"
+    "coverage",
+    ".next",
+    "__pycache__",
+    "venv",
+    ".venv",
+    "vendor",
+    "target"
   ],
   "ignoreFilePatterns": [
     ".*",
@@ -23,5 +22,15 @@
     "*.bak",
     "*~"
   ],
-  "templateOverrides": {}
+  "llm": {
+    "provider": "gemini",
+    "model": "gemini-2.5-flash",
+    "temperature": 0.3,
+    "maxTokensBudget": 120000
+  },
+  "interview": {
+    "maxQuestions": 8,
+    "adaptiveFollowUp": true,
+    "language": "en"
+  }
 }
