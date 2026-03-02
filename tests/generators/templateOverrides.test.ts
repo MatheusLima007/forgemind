@@ -1,61 +1,52 @@
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
-import { DocumentationGenerator } from "../../src/core/generators/documentation/documentationGenerator.js";
-import type { GeneratorContext } from "../../src/core/types/index.js";
-import { readTextFile } from "../../src/utils/fileSystem.js";
+import { describe, expect, it } from "vitest";
+import { DocumentGenerator } from "../../src/core/generators/documents/documentGenerator.js";
+import type { ConsolidatedKnowledge, EvidenceEntry, LLMRequest, ScanResult } from "../../src/core/types/index.js";
 
-const createdDirs: string[] = [];
+class FenceProvider {
+  constructor(private readonly content: string) {}
 
-afterEach(async () => {
-  await Promise.all(createdDirs.splice(0).map((path) => rm(path, { recursive: true, force: true })));
-});
-
-describe("Template overrides", () => {
-  it("uses docs.agentFirst override template with placeholders", async () => {
-    const root = await mkdtemp(join(tmpdir(), "forgemind-override-"));
-    createdDirs.push(root);
-
-    await mkdir(join(root, "templates"), { recursive: true });
-    await writeFile(
-      join(root, "templates", "agent-first.override.md"),
-      "# Custom Agent First\nLanguages: {{scan.languages}}\nFrameworks: {{scan.frameworks}}\nRaw: {{scan.json}}\n",
-      "utf-8"
-    );
-
-    const context: GeneratorContext = {
-      scan: {
-        rootPath: root,
-        languages: ["typescript", "javascript"],
-        frameworks: ["unknown"],
-        structure: { topLevel: ["src"], secondLevel: { src: [] } },
-        dependencies: {
-          packageJson: true,
-          composerJson: false,
-          packageDependencies: ["commander"],
-          composerDependencies: []
-        },
-        signals: ["node-project"],
-        scannedAt: new Date().toISOString()
-      },
-      config: {
-        compliance: { level: "L1" },
-        outputPaths: { docs: "docs", prompts: "prompts", policies: "policies", ai: "ai" },
-        ignoreDirs: [".git", "node_modules", "dist", "coverage"],
-        templateOverrides: {
-          "docs.agentFirst": "templates/agent-first.override.md"
-        }
-      }
+  async chat(_request: LLMRequest) {
+    return {
+      content: this.content,
+      metadata: { provider: "openai", model: "mock" }
     };
+  }
+}
 
-    const generator = new DocumentationGenerator();
-    await generator.generate(context);
+const scan: ScanResult = {
+  rootPath: "/tmp/repo",
+  languages: ["typescript"],
+  frameworks: ["nestjs"],
+  configFilesFound: ["package.json"],
+  dependencies: { configFiles: ["package.json"], dependencies: ["@nestjs/core"], ecosystemHints: ["node"] },
+  signals: ["nestjs-project"],
+  scannedAt: new Date().toISOString()
+};
 
-    const generated = await readTextFile(join(root, "docs", "agent-first.md"));
-    expect(generated).toContain("# Custom Agent First");
-    expect(generated).toContain("Languages: typescript, javascript");
-    expect(generated).toContain("Frameworks: unknown");
-    expect(generated).not.toContain("scannedAt");
+const knowledge: ConsolidatedKnowledge = {
+  systemOntology: { corePurpose: "p", mentalModel: "m", centralConcepts: [], systemOrientation: "o", principles: [] },
+  domainInvariants: { rules: [], validStates: [], invalidStates: [], constraints: [] },
+  conceptualBoundaries: { contexts: [], allowedRelations: [], prohibitedRelations: [], dangerousInteractions: [] },
+  decisions: { decisions: [] },
+  cognitiveRisks: { likelyErrors: [], deceptivePatterns: [], implicitCoupling: [], invisibleSideEffects: [], operationalAssumptions: [] },
+  evidenceIndex: [],
+  gaps: []
+};
+
+const evidenceMap: EvidenceEntry[] = [];
+
+describe("template overrides migrated coverage", () => {
+  it("strips markdown fences from provider output", async () => {
+    const generator = new DocumentGenerator(new FenceProvider("```markdown\n# Custom\n\nBody\n```") as never);
+    const content = await generator.generate("decision-log", knowledge, scan, evidenceMap);
+
+    expect(content).toBe("# Custom\n\nBody\n");
+  });
+
+  it("normalizes plain markdown with trailing newline", async () => {
+    const generator = new DocumentGenerator(new FenceProvider("# Plain") as never);
+    const content = await generator.generate("decision-log", knowledge, scan, evidenceMap);
+
+    expect(content).toBe("# Plain\n");
   });
 });

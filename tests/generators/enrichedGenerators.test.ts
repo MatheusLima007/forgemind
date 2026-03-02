@@ -1,209 +1,118 @@
-import { mkdir, mkdtemp, rm } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
-import { DocumentationGenerator } from "../../src/core/generators/documentation/documentationGenerator.js";
-import { PromptPackGenerator } from "../../src/core/generators/prompts/promptPackGenerator.js";
-import type { GeneratorContext, RepoIndex, RepoProfile } from "../../src/core/types/index.js";
-import { readTextFile } from "../../src/utils/fileSystem.js";
+import { describe, expect, it } from "vitest";
+import { DocumentGenerator, type DocumentType } from "../../src/core/generators/documents/documentGenerator.js";
+import { RedundancyFilter } from "../../src/core/generators/documents/redundancyFilter.js";
+import type { ConsolidatedKnowledge, EvidenceEntry, LLMRequest, ScanResult } from "../../src/core/types/index.js";
 
-const createdDirs: string[] = [];
+class CapturingProvider {
+  public readonly requests: LLMRequest[] = [];
 
-afterEach(async () => {
-  await Promise.all(createdDirs.splice(0).map((path) => rm(path, { recursive: true, force: true })));
-});
+  constructor(private readonly responseText: string) {}
 
-function buildContext(rootPath: string): GeneratorContext {
+  async chat(request: LLMRequest) {
+    this.requests.push(request);
+    return {
+      content: this.responseText,
+      metadata: { provider: "openai", model: "mock" }
+    };
+  }
+}
+
+function makeScan(): ScanResult {
   return {
-    scan: {
-      rootPath,
-      languages: ["typescript"],
-      frameworks: ["nestjs"],
-      structure: { topLevel: ["src", "domain"], secondLevel: { src: ["app.module.ts"] } },
-      dependencies: {
-        packageJson: true,
-        composerJson: false,
-        packageDependencies: ["@nestjs/core", "@nestjs/common"],
-        composerDependencies: []
-      },
-      signals: ["nestjs-project", "monorepo-detected"],
-      scannedAt: new Date().toISOString()
+    rootPath: "/tmp/repo",
+    languages: ["typescript"],
+    frameworks: ["nestjs"],
+    configFilesFound: ["package.json"],
+    dependencies: {
+      configFiles: ["package.json"],
+      dependencies: ["@nestjs/core"],
+      ecosystemHints: ["node"]
     },
-    config: {
-      compliance: { level: "L1" },
-      outputPaths: { docs: "docs", prompts: "prompts", policies: "policies", ai: "ai" },
-      ignoreDirs: [".git", "node_modules"],
-      templateOverrides: {},
-      generate: { focus: "nest", evidence: { required: true, minPerSection: 1 } }
+    signals: ["node-project"],
+    scannedAt: new Date().toISOString()
+  };
+}
+
+function makeKnowledge(): ConsolidatedKnowledge {
+  return {
+    systemOntology: {
+      corePurpose: "purpose",
+      mentalModel: "model",
+      centralConcepts: ["concept"],
+      systemOrientation: "orientation",
+      principles: ["principle"]
+    },
+    domainInvariants: {
+      rules: [{ name: "inv", description: "desc", severity: "critical", status: "confirmed" }],
+      validStates: [],
+      invalidStates: [],
+      constraints: []
+    },
+    conceptualBoundaries: {
+      contexts: [{ name: "app", responsibility: "resp", responsibilities: ["a"], risks: [] }],
+      allowedRelations: [{ from: "app", to: "db", type: "sync" }],
+      prohibitedRelations: [{ from: "ui", to: "db", reason: "policy" }],
+      dangerousInteractions: []
+    },
+    decisions: {
+      decisions: [
+        {
+          title: "dec",
+          context: "ctx",
+          choice: "choice",
+          irreversible: false,
+          alternatives: [],
+          tradeoffs: [],
+          implicitAssumptions: [],
+          limitations: []
+        }
+      ]
+    },
+    cognitiveRisks: {
+      likelyErrors: ["risk"],
+      deceptivePatterns: [],
+      implicitCoupling: [],
+      invisibleSideEffects: [],
+      operationalAssumptions: []
+    },
+    evidenceIndex: [],
+    gaps: []
+  };
+}
+
+function makeEvidence(): EvidenceEntry[] {
+  return [
+    { claimId: "c1", claimType: "ontology", summary: "onto", evidence: [], confidence: "inferred", agentImpact: "m" },
+    { claimId: "c2", claimType: "boundary", summary: "bound", evidence: [], confidence: "confirmed", agentImpact: "h" }
+  ];
+}
+
+describe("enriched generators (current architecture)", () => {
+  it("generates all document types and strips markdown fences", async () => {
+    const provider = new CapturingProvider("```markdown\n# Title\n\nBody\n```");
+    const generator = new DocumentGenerator(provider as never);
+
+    const docs = await generator.generateAll(makeKnowledge(), makeScan(), makeEvidence());
+
+    expect(docs.size).toBe(5);
+    for (const value of docs.values()) {
+      expect(value).toBe("# Title\n\nBody\n");
     }
-  };
-}
-
-function buildProfile(): RepoProfile {
-  return {
-    version: "1.0.0",
-    generatedAt: new Date().toISOString(),
-    framework: "nestjs",
-    routingStyle: "decorator-based",
-    domainStyle: "ddd",
-    keyRoots: { domain: ["domain", "src"], infra: ["config"] },
-    evidence: [{ path: "src/app.module.ts" }],
-    ambiguities: []
-  };
-}
-
-function buildIndex(): RepoIndex {
-  return {
-    version: "1.0.0",
-    generatedAt: new Date().toISOString(),
-    framework: "nestjs",
-    modules: [
-      { name: "AppModule", kind: "nest.module", evidence: { path: "src/app.module.ts", symbol: "AppModule", lineStart: 3 } },
-      { name: "UsersModule", kind: "nest.module", evidence: { path: "src/users/users.module.ts", symbol: "UsersModule", lineStart: 5 } }
-    ],
-    endpoints: [
-      { method: "GET", path: "/users", handler: "UsersController.findAll", evidence: { path: "src/users/users.controller.ts", symbol: "UsersController.findAll", lineStart: 10 } },
-      { method: "POST", path: "/users", handler: "UsersController.create", evidence: { path: "src/users/users.controller.ts", symbol: "UsersController.create", lineStart: 15 } }
-    ],
-    keyComponents: [
-      { name: "UsersController", kind: "nest.controller", evidence: { path: "src/users/users.controller.ts", symbol: "UsersController", lineStart: 5 } },
-      { name: "UsersService", kind: "nest.provider", evidence: { path: "src/users/users.service.ts", symbol: "UsersService", lineStart: 3 } }
-    ],
-    integrations: ["database", "cache"],
-    conventions: ["nestjs.decorators", "nestjs.modules"],
-    evidence: [{ path: "src/app.module.ts" }],
-    ambiguities: []
-  };
-}
-
-describe("Enriched DocumentationGenerator", () => {
-  it("includes profile section in agent-first doc when enriched context is provided", async () => {
-    const root = await mkdtemp(join(tmpdir(), "forgemind-edoc-"));
-    createdDirs.push(root);
-    await mkdir(join(root, "docs"), { recursive: true });
-
-    const generator = new DocumentationGenerator();
-    const files = await generator.generate(buildContext(root), { profile: buildProfile(), index: buildIndex() });
-
-    const agentFirst = await readTextFile(files[0]);
-    expect(agentFirst).toContain("## Architecture Profile");
-    expect(agentFirst).toContain("Routing style: decorator-based");
-    expect(agentFirst).toContain("Domain style: ddd");
   });
 
-  it("includes modules and key components in agent-first doc", async () => {
-    const root = await mkdtemp(join(tmpdir(), "forgemind-edoc-mods-"));
-    createdDirs.push(root);
-    await mkdir(join(root, "docs"), { recursive: true });
+  it("runs redundancy filter for all documents", async () => {
+    const provider = new CapturingProvider("```markdown\n# Clean\n```\n");
+    const filter = new RedundancyFilter(provider as never);
 
-    const generator = new DocumentationGenerator();
-    const files = await generator.generate(buildContext(root), { profile: buildProfile(), index: buildIndex() });
+    const input = new Map<string, string>([
+      ["system-ontology", "# A"],
+      ["domain-invariants", "# B"]
+    ]);
 
-    const agentFirst = await readTextFile(files[0]);
-    expect(agentFirst).toContain("## Modules");
-    expect(agentFirst).toContain("**AppModule**");
-    expect(agentFirst).toContain("**UsersModule**");
-    expect(agentFirst).toContain("## Key Components");
-    expect(agentFirst).toContain("**UsersController**");
-    expect(agentFirst).toContain("**UsersService**");
-  });
+    const result = await filter.filterAll(input);
 
-  it("includes endpoints and conventions in architecture doc", async () => {
-    const root = await mkdtemp(join(tmpdir(), "forgemind-edoc-arch-"));
-    createdDirs.push(root);
-    await mkdir(join(root, "docs"), { recursive: true });
-
-    const generator = new DocumentationGenerator();
-    const files = await generator.generate(buildContext(root), { profile: buildProfile(), index: buildIndex() });
-
-    const architecture = await readTextFile(files[1]);
-    expect(architecture).toContain("## Endpoints");
-    expect(architecture).toContain("`GET /users`");
-    expect(architecture).toContain("`POST /users`");
-    expect(architecture).toContain("UsersController.findAll");
-    expect(architecture).toContain("## Conventions");
-    expect(architecture).toContain("nestjs.decorators");
-  });
-
-  it("renders without enriched context (backward compatible)", async () => {
-    const root = await mkdtemp(join(tmpdir(), "forgemind-edoc-noer-"));
-    createdDirs.push(root);
-    await mkdir(join(root, "docs"), { recursive: true });
-
-    const generator = new DocumentationGenerator();
-    const files = await generator.generate(buildContext(root));
-
-    const agentFirst = await readTextFile(files[0]);
-    expect(agentFirst).toContain("# Agent-First Repository Guide");
-    expect(agentFirst).not.toContain("## Architecture Profile");
-    expect(agentFirst).not.toContain("## Modules");
-  });
-});
-
-describe("Enriched PromptPackGenerator", () => {
-  it("includes architecture context in prompt files", async () => {
-    const root = await mkdtemp(join(tmpdir(), "forgemind-eprompt-"));
-    createdDirs.push(root);
-    await mkdir(join(root, "prompts"), { recursive: true });
-
-    const generator = new PromptPackGenerator();
-    const files = await generator.generate(buildContext(root), { profile: buildProfile(), index: buildIndex() });
-
-    expect(files).toHaveLength(4);
-
-    const review = await readTextFile(files[0]);
-    expect(review).toContain("## Architecture Context");
-    expect(review).toContain("Routing style: decorator-based");
-    expect(review).toContain("Domain style: ddd");
-    expect(review).toContain("Known modules:");
-    expect(review).toContain("AppModule");
-
-    expect(review).toContain("## Known Endpoints");
-    expect(review).toContain("GET /users");
-    expect(review).toContain("## Known Modules");
-    expect(review).toContain("AppModule");
-  });
-
-  it("includes endpoint reference in feature and troubleshooting prompts", async () => {
-    const root = await mkdtemp(join(tmpdir(), "forgemind-eprompt-ep-"));
-    createdDirs.push(root);
-    await mkdir(join(root, "prompts"), { recursive: true });
-
-    const generator = new PromptPackGenerator();
-    const files = await generator.generate(buildContext(root), { profile: buildProfile(), index: buildIndex() });
-
-    const feature = await readTextFile(files[1]);
-    expect(feature).toContain("## Known Endpoints");
-    expect(feature).toContain("POST /users");
-
-    const troubleshooting = await readTextFile(files[3]);
-    expect(troubleshooting).toContain("## Known Endpoints");
-  });
-
-  it("refactor prompt includes module reference but not endpoints", async () => {
-    const root = await mkdtemp(join(tmpdir(), "forgemind-eprompt-ref-"));
-    createdDirs.push(root);
-    await mkdir(join(root, "prompts"), { recursive: true });
-
-    const generator = new PromptPackGenerator();
-    const files = await generator.generate(buildContext(root), { profile: buildProfile(), index: buildIndex() });
-
-    const refactor = await readTextFile(files[2]);
-    expect(refactor).toContain("## Known Modules");
-    expect(refactor).not.toContain("## Known Endpoints");
-  });
-
-  it("renders without enriched context (backward compatible)", async () => {
-    const root = await mkdtemp(join(tmpdir(), "forgemind-eprompt-noer-"));
-    createdDirs.push(root);
-    await mkdir(join(root, "prompts"), { recursive: true });
-
-    const generator = new PromptPackGenerator();
-    const files = await generator.generate(buildContext(root));
-
-    const review = await readTextFile(files[0]);
-    expect(review).toContain("# Review Prompt");
-    expect(review).not.toContain("## Architecture Context");
-    expect(review).not.toContain("## Known Endpoints");
+    expect(result.get("system-ontology")).toBe("# Clean\n");
+    expect(result.get("domain-invariants")).toBe("# Clean\n");
+    expect(provider.requests).toHaveLength(2);
   });
 });

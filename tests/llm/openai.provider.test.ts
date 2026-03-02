@@ -1,5 +1,4 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { LLMInput } from "../../src/core/types/index.js";
 import { OpenAIProvider } from "../../src/llm/openai.provider.js";
 import { LLMProviderError } from "../../src/llm/provider.interface.js";
 
@@ -10,43 +9,13 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-function createInput(): LLMInput {
+function createRequest() {
   return {
-    repoFacts: {
-      languages: ["typescript"],
-      frameworks: ["nestjs"],
-      topLevelStructure: ["src"],
-      dependencySummary: {
-        files: ["package.json"],
-        packageDependenciesCount: 1,
-        composerDependenciesCount: 0
-      },
-      architecturalSignals: ["node-project"],
-      complianceLevel: "L1"
-    },
-    contractData: {
-      arrcVersion: "1.0.0",
-      version: "1.0.0",
-      generatedAt: "2026-01-01T00:00:00.000Z",
-      complianceLevel: "L1",
-      scanSummary: {
-        languages: ["typescript"],
-        frameworks: ["nestjs"],
-        dependencyFiles: ["package.json"]
-      },
-      fingerprint: {
-        version: "1.0.0",
-        generatedAt: "2026-01-01T00:00:00.000Z",
-        structureHash: "a".repeat(64),
-        dependenciesHash: "b".repeat(64),
-        docsHash: "c".repeat(64),
-        fingerprint: "d".repeat(64)
-      }
-    },
-    currentDocs: {
-      "docs/agent-first.md": "# Base"
-    },
-    generationType: "docs"
+    messages: [
+      { role: "system" as const, content: "Return JSON" },
+      { role: "user" as const, content: "Generate summary" }
+    ],
+    jsonMode: true
   };
 }
 
@@ -58,7 +27,7 @@ describe("OpenAIProvider", () => {
         choices: [
           {
             message: {
-              content: JSON.stringify({ enrichedContent: { "docs/agent-first.md": "extra" } })
+              content: JSON.stringify({ ok: true, value: "extra" })
             }
           }
         ],
@@ -73,9 +42,9 @@ describe("OpenAIProvider", () => {
       baseUrl: "https://api.openai.com/v1",
       providerName: "openai"
     });
-    const output = await provider.generate(createInput());
+    const output = await provider.chat(createRequest());
 
-    expect(output.enrichedContent["docs/agent-first.md"]).toBe("extra");
+    expect(output.content).toContain("\"ok\":true");
     expect(output.metadata.tokensUsed).toBe(123);
   });
 
@@ -93,14 +62,14 @@ describe("OpenAIProvider", () => {
       providerName: "openai"
     });
 
-    await expect(provider.generate(createInput())).rejects.toBeInstanceOf(LLMProviderError);
+    await expect(provider.chat(createRequest())).rejects.toBeInstanceOf(LLMProviderError);
   });
 
   it("throws provider error for malformed content", async () => {
     globalThis.fetch = vi.fn().mockResolvedValue({
       ok: true,
       json: async () => ({
-        choices: [{ message: { content: "not-json" } }]
+        choices: [{ message: { content: "" } }]
       })
     } as Response);
 
@@ -112,7 +81,7 @@ describe("OpenAIProvider", () => {
       providerName: "openai"
     });
 
-    await expect(provider.generate(createInput())).rejects.toBeInstanceOf(LLMProviderError);
+    await expect(provider.chat(createRequest())).rejects.toBeInstanceOf(LLMProviderError);
   });
 
   it("supports openai-compatible mode without auth header", async () => {
@@ -122,7 +91,7 @@ describe("OpenAIProvider", () => {
         choices: [
           {
             message: {
-              content: JSON.stringify({ enrichedContent: { "docs/agent-first.md": "extra" } })
+              content: JSON.stringify({ ok: true })
             }
           }
         ]
@@ -138,7 +107,7 @@ describe("OpenAIProvider", () => {
       providerName: "openai-compatible"
     });
 
-    await provider.generate(createInput());
+    await provider.chat(createRequest());
 
     const call = fetchMock.mock.calls[0] as [string, RequestInit];
     expect(call[0]).toBe("http://localhost:11434/v1/chat/completions");

@@ -1,200 +1,57 @@
-import { mkdir, mkdtemp, rm } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
-import { ProfileGenerator } from "../../src/core/generators/profile/profileGenerator.js";
-import type { CandidateSet, GeneratorContext, LLMInput, LLMOutput } from "../../src/core/types/index.js";
-import type { LLMProvider } from "../../src/llm/provider.interface.js";
+import { describe, expect, it } from "vitest";
+import { DocumentGenerator } from "../../src/core/generators/documents/documentGenerator.js";
+import type { ConsolidatedKnowledge, EvidenceEntry, LLMRequest, ScanResult } from "../../src/core/types/index.js";
 
-const createdDirs: string[] = [];
-
-afterEach(async () => {
-  await Promise.all(createdDirs.splice(0).map((path) => rm(path, { recursive: true, force: true })));
-});
-
-function buildContext(rootPath: string): GeneratorContext {
-  return {
-    scan: {
-      rootPath,
-      languages: ["typescript"],
-      frameworks: ["nestjs"],
-      structure: { topLevel: ["src", "domain"], secondLevel: { src: [] } },
-      dependencies: {
-        packageJson: true,
-        composerJson: false,
-        packageDependencies: ["@nestjs/core"],
-        composerDependencies: []
-      },
-      signals: ["nestjs-project"],
-      scannedAt: new Date().toISOString()
-    },
-    config: {
-      compliance: { level: "L1" },
-      outputPaths: { docs: "docs", prompts: "prompts", policies: "policies", ai: "ai" },
-      ignoreDirs: [".git", "node_modules"],
-      templateOverrides: {},
-      generate: { focus: "nest", evidence: { required: true, minPerSection: 1 } }
-    }
-  };
+class CaptureProvider {
+  public lastRequest: LLMRequest | null = null;
+  async chat(request: LLMRequest) {
+    this.lastRequest = request;
+    return {
+      content: "# ontology",
+      metadata: { provider: "openai", model: "mock" }
+    };
+  }
 }
 
-function buildCandidates(): CandidateSet {
-  return {
-    version: "1.0.0",
-    generatedAt: new Date().toISOString(),
-    framework: "nestjs",
-    focus: "nest",
-    files: [
-      { path: "src/app.module.ts", category: "nest.module", reason: "Module" },
-      { path: "src/users.controller.ts", category: "nest.controller", reason: "Controller" }
+const scan: ScanResult = {
+  rootPath: "/tmp/repo",
+  languages: ["typescript"],
+  frameworks: ["nestjs"],
+  configFilesFound: ["package.json"],
+  dependencies: { configFiles: ["package.json"], dependencies: ["@nestjs/core"], ecosystemHints: ["node"] },
+  signals: ["nestjs-project"],
+  scannedAt: new Date().toISOString()
+};
+
+const knowledge: ConsolidatedKnowledge = {
+  systemOntology: { corePurpose: "purpose", mentalModel: "model", centralConcepts: ["a"], systemOrientation: "orientation", principles: ["p"] },
+  domainInvariants: { rules: [], validStates: [], invalidStates: [], constraints: [] },
+  conceptualBoundaries: { contexts: [], allowedRelations: [], prohibitedRelations: [], dangerousInteractions: [] },
+  decisions: {
+    decisions: [
+      { title: "d1", context: "c1", choice: "x", irreversible: false, alternatives: [], tradeoffs: [], implicitAssumptions: [], limitations: [] },
+      { title: "d2", context: "c2", choice: "y", irreversible: false, alternatives: [], tradeoffs: [], implicitAssumptions: [], limitations: [] }
     ]
-  };
-}
+  },
+  cognitiveRisks: { likelyErrors: [], deceptivePatterns: [], implicitCoupling: [], invisibleSideEffects: [], operationalAssumptions: [] },
+  evidenceIndex: [],
+  gaps: []
+};
 
-describe("ProfileGenerator", () => {
-  it("generates heuristic profile without LLM provider", async () => {
-    const root = await mkdtemp(join(tmpdir(), "forgemind-profile-"));
-    createdDirs.push(root);
+const evidenceMap: EvidenceEntry[] = [
+  { claimId: "o1", claimType: "ontology", summary: "onto", evidence: [], confidence: "confirmed", agentImpact: "high" }
+];
 
-    const generator = new ProfileGenerator();
-    const profile = await generator.generate(buildContext(root), buildCandidates(), "nest");
+describe("profile generator migrated coverage", () => {
+  it("system-ontology payload includes ontology and relevant decisions", async () => {
+    const provider = new CaptureProvider();
+    const generator = new DocumentGenerator(provider as never);
 
-    expect(profile.version).toBe("1.0.0");
-    expect(profile.framework).toBe("nestjs");
-    expect(profile.routingStyle).toBe("decorator-based");
-    expect(profile.domainStyle).toBe("ddd");
-    expect(profile.keyRoots.domain).toContain("domain");
-    expect(profile.evidence.length).toBeGreaterThan(0);
-  });
+    await generator.generate("system-ontology", knowledge, scan, evidenceMap);
 
-  it("generates heuristic profile when LLM provider is null", async () => {
-    const root = await mkdtemp(join(tmpdir(), "forgemind-profile-null-"));
-    createdDirs.push(root);
-
-    const generator = new ProfileGenerator();
-    const profile = await generator.generate(buildContext(root), buildCandidates(), "nest", null);
-
-    expect(profile.routingStyle).toBe("decorator-based");
-    expect(profile.domainStyle).toBe("ddd");
-  });
-
-  it("merges LLM refinement that resolves unknown routing style", async () => {
-    const root = await mkdtemp(join(tmpdir(), "forgemind-profile-llm-"));
-    createdDirs.push(root);
-
-    const context = buildContext(root);
-    // Clear controller category so routing infers as unknown
-    const candidates: CandidateSet = {
-      ...buildCandidates(),
-      files: [{ path: "src/app.module.ts", category: "nest.module", reason: "Module" }]
-    };
-
-    const mockLLM: LLMProvider = {
-      generate: async (_input: LLMInput): Promise<LLMOutput> => ({
-        enrichedContent: {
-          profile: JSON.stringify({
-            routingStyle: "decorator-based",
-            ambiguities: []
-          })
-        },
-        metadata: { provider: "openai", model: "gpt-4o", tokensUsed: 100 }
-      })
-    };
-
-    const generator = new ProfileGenerator();
-    const profile = await generator.generate(context, candidates, "nest", mockLLM);
-
-    // LLM should resolve the unknown routing style
-    expect(profile.routingStyle).toBe("decorator-based");
-    expect(profile.ambiguities).toHaveLength(0);
-  });
-
-  it("preserves heuristic values when LLM provides unknown values", async () => {
-    const root = await mkdtemp(join(tmpdir(), "forgemind-profile-preserve-"));
-    createdDirs.push(root);
-
-    const mockLLM: LLMProvider = {
-      generate: async (_input: LLMInput): Promise<LLMOutput> => ({
-        enrichedContent: {
-          profile: JSON.stringify({
-            routingStyle: "unknown",
-            domainStyle: "unknown"
-          })
-        },
-        metadata: { provider: "openai", model: "gpt-4o", tokensUsed: 50 }
-      })
-    };
-
-    const generator = new ProfileGenerator();
-    const profile = await generator.generate(buildContext(root), buildCandidates(), "nest", mockLLM);
-
-    // Heuristic profile has decorator-based and ddd, LLM returned unknown so heuristic wins
-    expect(profile.routingStyle).toBe("decorator-based");
-    expect(profile.domainStyle).toBe("ddd");
-  });
-
-  it("merges additive key roots from LLM", async () => {
-    const root = await mkdtemp(join(tmpdir(), "forgemind-profile-roots-"));
-    createdDirs.push(root);
-
-    const mockLLM: LLMProvider = {
-      generate: async (_input: LLMInput): Promise<LLMOutput> => ({
-        enrichedContent: {
-          profile: JSON.stringify({
-            keyRoots: {
-              domain: ["libs"],
-              infra: ["deploy"]
-            }
-          })
-        },
-        metadata: { provider: "openai", model: "gpt-4o", tokensUsed: 80 }
-      })
-    };
-
-    const generator = new ProfileGenerator();
-    const profile = await generator.generate(buildContext(root), buildCandidates(), "nest", mockLLM);
-
-    expect(profile.keyRoots.domain).toContain("domain");
-    expect(profile.keyRoots.domain).toContain("libs");
-    expect(profile.keyRoots.infra).toContain("deploy");
-  });
-
-  it("falls back to heuristic when LLM throws", async () => {
-    const root = await mkdtemp(join(tmpdir(), "forgemind-profile-fail-"));
-    createdDirs.push(root);
-
-    const mockLLM: LLMProvider = {
-      generate: async (): Promise<LLMOutput> => {
-        throw new Error("Connection refused");
-      }
-    };
-
-    const generator = new ProfileGenerator();
-    const profile = await generator.generate(buildContext(root), buildCandidates(), "nest", mockLLM);
-
-    expect(profile.routingStyle).toBe("decorator-based");
-    expect(profile.domainStyle).toBe("ddd");
-    expect(profile.framework).toBe("nestjs");
-  });
-
-  it("falls back to heuristic when LLM returns invalid shape", async () => {
-    const root = await mkdtemp(join(tmpdir(), "forgemind-profile-invalid-"));
-    createdDirs.push(root);
-
-    const mockLLM: LLMProvider = {
-      generate: async (_input: LLMInput): Promise<LLMOutput> => ({
-        enrichedContent: {
-          profile: "not valid json at all {{{{"
-        },
-        metadata: { provider: "openai", model: "gpt-4o", tokensUsed: 30 }
-      })
-    };
-
-    const generator = new ProfileGenerator();
-    const profile = await generator.generate(buildContext(root), buildCandidates(), "nest", mockLLM);
-
-    // Should gracefully fall back to heuristic
-    expect(profile.routingStyle).toBe("decorator-based");
-    expect(profile.domainStyle).toBe("ddd");
+    const payload = JSON.parse(provider.lastRequest?.messages[1].content ?? "{}");
+    expect(payload.systemOntology.corePurpose).toBe("purpose");
+    expect(Array.isArray(payload.relevantDecisions)).toBe(true);
+    expect(payload.relevantDecisions).toHaveLength(2);
   });
 });

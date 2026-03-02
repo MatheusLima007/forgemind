@@ -1,5 +1,4 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { LLMInput } from "../../src/core/types/index.js";
 import { GeminiProvider } from "../../src/llm/gemini.provider.js";
 import { LLMProviderError } from "../../src/llm/provider.interface.js";
 
@@ -10,41 +9,13 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-function createInput(): LLMInput {
+function createRequest() {
   return {
-    repoFacts: {
-      languages: ["typescript"],
-      frameworks: ["nestjs"],
-      topLevelStructure: ["src"],
-      dependencySummary: {
-        files: ["package.json"],
-        packageDependenciesCount: 1,
-        composerDependenciesCount: 0
-      },
-      architecturalSignals: ["node-project"],
-      complianceLevel: "L1"
-    },
-    contractData: {
-      arrcVersion: "1.0.0",
-      version: "1.0.0",
-      generatedAt: "2026-01-01T00:00:00.000Z",
-      complianceLevel: "L1",
-      scanSummary: {
-        languages: ["typescript"],
-        frameworks: ["nestjs"],
-        dependencyFiles: ["package.json"]
-      },
-      fingerprint: {
-        version: "1.0.0",
-        generatedAt: "2026-01-01T00:00:00.000Z",
-        structureHash: "a".repeat(64),
-        dependenciesHash: "b".repeat(64),
-        docsHash: "c".repeat(64),
-        fingerprint: "d".repeat(64)
-      }
-    },
-    currentDocs: { "docs/agent-first.md": "# Base" },
-    generationType: "docs"
+    messages: [
+      { role: "system" as const, content: "Return strict JSON" },
+      { role: "user" as const, content: "Generate hypotheses" }
+    ],
+    jsonMode: true
   };
 }
 
@@ -57,7 +28,7 @@ describe("GeminiProvider", () => {
           {
             content: {
               parts: [
-                { text: JSON.stringify({ enrichedContent: { "docs/agent-first.md": "enriched by gemini" } }) }
+                { text: JSON.stringify({ hypotheses: [{ id: "h-1" }] }) }
               ]
             }
           }
@@ -71,16 +42,16 @@ describe("GeminiProvider", () => {
       model: "gemini-1.5-flash",
       temperature: 0.2
     });
-    const output = await provider.generate(createInput());
+    const output = await provider.chat(createRequest());
 
-    expect(output.enrichedContent["docs/agent-first.md"]).toBe("enriched by gemini");
+    expect(output.content).toContain("h-1");
     expect(output.metadata.provider).toBe("gemini");
     expect(output.metadata.model).toBe("gemini-1.5-flash");
     expect(output.metadata.tokensUsed).toBe(456);
   });
 
   it("handles markdown-fenced JSON response", async () => {
-    const jsonContent = JSON.stringify({ enrichedContent: { "docs/agent-first.md": "fenced" } });
+    const jsonContent = JSON.stringify({ ok: true, mode: "fenced" });
     globalThis.fetch = vi.fn().mockResolvedValue({
       ok: true,
       json: async () => ({
@@ -99,9 +70,9 @@ describe("GeminiProvider", () => {
       model: "gemini-1.5-pro",
       temperature: 0.2
     });
-    const output = await provider.generate(createInput());
+    const output = await provider.chat(createRequest());
 
-    expect(output.enrichedContent["docs/agent-first.md"]).toBe("fenced");
+    expect(output.content).toContain("fenced");
   });
 
   it("throws provider error for non-ok status", async () => {
@@ -116,7 +87,7 @@ describe("GeminiProvider", () => {
       temperature: 0.2
     });
 
-    await expect(provider.generate(createInput())).rejects.toBeInstanceOf(LLMProviderError);
+    await expect(provider.chat(createRequest())).rejects.toBeInstanceOf(LLMProviderError);
   });
 
   it("throws provider error when response has no text content", async () => {
@@ -133,10 +104,10 @@ describe("GeminiProvider", () => {
       temperature: 0.2
     });
 
-    await expect(provider.generate(createInput())).rejects.toBeInstanceOf(LLMProviderError);
+    await expect(provider.chat(createRequest())).rejects.toBeInstanceOf(LLMProviderError);
   });
 
-  it("throws provider error for malformed JSON content", async () => {
+  it("returns raw text even when content is not valid JSON", async () => {
     globalThis.fetch = vi.fn().mockResolvedValue({
       ok: true,
       json: async () => ({
@@ -150,93 +121,8 @@ describe("GeminiProvider", () => {
       temperature: 0.2
     });
 
-    await expect(provider.generate(createInput())).rejects.toBeInstanceOf(LLMProviderError);
-  });
-
-  it("normalizes flat-string enrichedContent into Record keyed by doc key", async () => {
-    globalThis.fetch = vi.fn().mockResolvedValue({
-      ok: true,
-      json: async () => ({
-        candidates: [
-          {
-            content: {
-              parts: [{ text: JSON.stringify({ enrichedContent: "flat enriched text" }) }]
-            }
-          }
-        ]
-      })
-    } as Response);
-
-    const provider = new GeminiProvider({
-      apiKey: "test-gemini-key",
-      model: "gemini-2.5-flash",
-      temperature: 0.2
-    });
-    const output = await provider.generate(createInput());
-
-    expect(output.enrichedContent["docs/agent-first.md"]).toBe("flat enriched text");
-  });
-
-  it("stringifies nested object values in enrichedContent", async () => {
-    globalThis.fetch = vi.fn().mockResolvedValue({
-      ok: true,
-      json: async () => ({
-        candidates: [
-          {
-            content: {
-              parts: [
-                {
-                  text: JSON.stringify({
-                    enrichedContent: {
-                      profile: { name: "mapspet", stack: ["nestjs"] }
-                    }
-                  })
-                }
-              ]
-            }
-          }
-        ]
-      })
-    } as Response);
-
-    const input = createInput();
-    input.currentDocs = { profile: '{"name":"base"}' };
-    const provider = new GeminiProvider({
-      apiKey: "test-gemini-key",
-      model: "gemini-2.5-flash",
-      temperature: 0.2
-    });
-    const output = await provider.generate(input);
-
-    expect(output.enrichedContent.profile).toBe(JSON.stringify({ name: "mapspet", stack: ["nestjs"] }));
-  });
-
-  it("falls back to flat doc keys when enrichedContent wrapper is absent", async () => {
-    globalThis.fetch = vi.fn().mockResolvedValue({
-      ok: true,
-      json: async () => ({
-        candidates: [
-          {
-            content: {
-              parts: [
-                {
-                  text: JSON.stringify({ "docs/agent-first.md": "content without wrapper" })
-                }
-              ]
-            }
-          }
-        ]
-      })
-    } as Response);
-
-    const provider = new GeminiProvider({
-      apiKey: "test-gemini-key",
-      model: "gemini-2.5-flash",
-      temperature: 0.2
-    });
-    const output = await provider.generate(createInput());
-
-    expect(output.enrichedContent["docs/agent-first.md"]).toBe("content without wrapper");
+    const output = await provider.chat(createRequest());
+    expect(output.content).toBe("not json at all");
   });
 
   it("sends API key as query param and uses responseMimeType", async () => {
@@ -260,7 +146,7 @@ describe("GeminiProvider", () => {
       model: "gemini-1.5-flash",
       temperature: 0.3
     });
-    await provider.generate(createInput());
+    await provider.chat(createRequest());
 
     const [url, options] = fetchMock.mock.calls[0] as [string, RequestInit];
     expect(url).toContain("key=my-secret-key");

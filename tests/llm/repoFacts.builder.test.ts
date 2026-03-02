@@ -9,30 +9,34 @@ describe("buildRepoFacts", () => {
         rootPath: "/tmp/repo",
         languages: ["typescript"],
         frameworks: ["nestjs"],
-        structure: {
-          topLevel: ["src", "docs"],
-          secondLevel: { src: ["core"] }
-        },
+        configFilesFound: ["src/app.module.ts", "docs/system-ontology.md", "package.json"],
         dependencies: {
-          packageJson: true,
-          composerJson: false,
-          packageDependencies: ["@nestjs/core", "chalk"],
-          composerDependencies: []
+          configFiles: ["package.json"],
+          dependencies: ["@nestjs/core", "chalk"],
+          ecosystemHints: ["node"]
         },
         signals: ["node-project"],
         scannedAt: "2026-01-01T00:00:00.000Z"
       },
       config: {
-        compliance: { level: "L1" },
-        outputPaths: { docs: "docs", prompts: "prompts", policies: "policies", ai: "ai" },
+        outputPath: "docs",
+        intermediatePath: "ai",
         ignoreDirs: [".git", "node_modules"],
         ignoreFilePatterns: [".*"],
-        templateOverrides: {},
         llm: {
-          enabled: false,
           provider: "openai",
           model: "gpt-5-mini",
-          temperature: 0.2
+          temperature: 0.2,
+          maxTokensBudget: 5000
+        },
+        qualityGate: {
+          minConfidence: 0.65,
+          maxPendingRatio: 0.45
+        },
+        interview: {
+          maxQuestions: 8,
+          adaptiveFollowUp: true,
+          language: "en"
         }
       }
     };
@@ -41,7 +45,7 @@ describe("buildRepoFacts", () => {
 
     expect(facts.languages).toEqual(["typescript"]);
     expect(facts.frameworks).toEqual(["nestjs"]);
-    expect(facts.topLevelStructure).toEqual(["src", "docs"]);
+    expect(facts.topLevelStructure).toEqual(["docs", "package.json", "src"]);
     expect(facts.dependencySummary.files).toEqual(["package.json"]);
     expect(facts.dependencySummary.packageDependenciesCount).toBe(2);
     expect(facts.dependencySummary.composerDependenciesCount).toBe(0);

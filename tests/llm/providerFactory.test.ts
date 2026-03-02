@@ -55,10 +55,10 @@ afterEach(() => {
 });
 
 const enabledConfig: LLMConfig = {
-  enabled: true,
   provider: "openai",
   model: "gpt-5-mini",
-  temperature: 0.2
+  temperature: 0.2,
+  maxTokensBudget: 5000
 };
 
 describe("createLLMProvider", () => {

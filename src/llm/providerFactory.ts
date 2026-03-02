@@ -9,6 +9,11 @@ export interface LLMProviderResolution {
   skipReason?: string;
 }
 
+export interface ProviderRuntime {
+  apiKey?: string;
+  baseUrl?: string;
+}
+
 function resolveBaseUrl(config: LLMConfig): string | undefined {
   if (config.baseUrl && config.baseUrl.trim() !== "") {
     return config.baseUrl;
@@ -43,6 +48,16 @@ function resolveApiKey(config: LLMConfig, providerName: Exclude<LLMProviderName,
   }
 
   return process.env.FORGEMIND_LLM_API_KEY;
+}
+
+export function resolveProviderRuntime(
+  config: LLMConfig,
+  providerName: Exclude<LLMProviderName, "none">
+): ProviderRuntime {
+  return {
+    apiKey: resolveApiKey(config, providerName),
+    baseUrl: resolveBaseUrl(config)
+  };
 }
 
 export function createLLMProvider(config: LLMConfig, providerOverride?: LLMProviderName): LLMProviderResolution {
