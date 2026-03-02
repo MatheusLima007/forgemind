@@ -1,7 +1,11 @@
-import { createHash } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 
 export function hashContent(content: string): string {
   return createHash("sha256").update(content).digest("hex");
+}
+
+export function v4IdLike(): string {
+  return randomBytes(8).toString("hex");
 }
 
 function sortJson(value: unknown): unknown {

@@ -1,129 +1,281 @@
-export type SupportedLanguage = "typescript" | "javascript" | "php" | "unknown";
-export type SupportedFramework = "nestjs" | "react" | "laravel" | "unknown";
-export type LLMProviderName = "openai" | "openai-compatible" | "anthropic" | "azure" | "local" | "none";
-export type LLMGenerationType = "docs" | "prompts" | "policies";
+// ─────────────────────────────────────────────────────────────
+// ForgeMind — AI Context Engineering Engine
+// Type definitions
+// ─────────────────────────────────────────────────────────────
+
+// ── Language & Framework ──────────────────────────────────────
+
+export type DetectedLanguage = string;
+export type DetectedFramework = string;
+
+export type LLMProviderName =
+  | "openai"
+  | "openai-compatible"
+  | "anthropic"
+  | "azure"
+  | "gemini"
+  | "local"
+  | "none";
+
+// ── Scanner ───────────────────────────────────────────────────
 
 export interface DependencyInfo {
-  packageJson: boolean;
-  composerJson: boolean;
-  packageDependencies: string[];
-  composerDependencies: string[];
-}
-
-export interface FolderStructure {
-  topLevel: string[];
-  secondLevel: Record<string, string[]>;
+  configFiles: string[];
+  dependencies: string[];
+  ecosystemHints: string[];
 }
 
 export interface ScanResult {
   rootPath: string;
-  languages: SupportedLanguage[];
-  frameworks: SupportedFramework[];
-  structure: FolderStructure;
+  languages: DetectedLanguage[];
+  frameworks: DetectedFramework[];
+  configFilesFound: string[];
   dependencies: DependencyInfo;
   signals: string[];
   scannedAt: string;
 }
 
-export interface RepoFingerprint {
-  version: string;
-  generatedAt: string;
-  structureHash: string;
-  dependenciesHash: string;
-  docsHash: string;
-  fingerprint: string;
-}
+// ── Architectural Signals ─────────────────────────────────────
 
-export interface AIContract {
-  arrcVersion: string;
-  version: string;
-  generatedAt: string;
-  complianceLevel: "L1";
-  scanSummary: {
-    languages: SupportedLanguage[];
-    frameworks: SupportedFramework[];
-    dependencyFiles: string[];
-  };
-  fingerprint: RepoFingerprint;
-}
-
-export interface PolicyItem {
-  id: string;
+export interface ArchitecturalSignal {
+  type: string;
+  source: string;
+  confidence: number;
+  evidence: string[];
   description: string;
+}
+
+// ── Code Sampling ─────────────────────────────────────────────
+
+export interface CodeSample {
   path: string;
-  required: boolean;
-  status: "present" | "missing";
+  content: string;
+  reason: string;
+  category: "entry-point" | "config" | "domain" | "pattern-representative" | "high-fan-in" | "infrastructure";
+  tokenEstimate: number;
 }
 
-export interface PolicyChecklist {
+// ── Hypotheses ────────────────────────────────────────────────
+
+export type HypothesisCategory = "ontology" | "domain" | "boundary" | "decision" | "risk" | "invariant";
+export type HypothesisStatus = "pending" | "confirmed" | "rejected";
+
+export interface Hypothesis {
+  id: string;
+  category: HypothesisCategory;
+  statement: string;
+  confidence: number;
+  evidenceRefs: Array<{ path: string; symbol?: string; lines?: string }>;
+  evidence: ArchitecturalSignal[];
+  needsConfirmation: boolean;
+  status: HypothesisStatus;
+}
+
+export interface EvidenceRef {
+  path: string;
+  symbol?: string;
+  lines?: string;
+}
+
+export interface EvidenceEntry {
+  claimId: string;
+  claimType: HypothesisCategory;
+  summary: string;
+  evidence: EvidenceRef[];
+  confidence: "confirmed" | "inferred" | "unknown";
+  agentImpact: string;
+}
+
+export type DomainCandidateKind = "entity" | "invariant" | "workflow" | "guard" | "schema" | "event";
+
+export interface DomainCandidate {
+  name: string;
+  kind: DomainCandidateKind;
+  source: string;
+  filePath: string;
+  symbol?: string;
+  lines?: string;
+}
+
+// ── Interview ─────────────────────────────────────────────────
+
+export type QuestionPriority = "critical" | "important" | "nice-to-have";
+
+export interface InterviewQuestion {
+  id: string;
+  category: string;
+  question: string;
+  context: string;
+  relatedHypotheses: string[];
+  options?: string[];
+  priority: QuestionPriority;
+}
+
+export interface InterviewAnswer {
+  questionId: string;
+  answer: string;
+  selectedOption?: number;
+  source?: "selected" | "custom";
+  timestamp: string;
+}
+
+export interface StructuredAnswer {
+  questionId: string;
+  answer: string;
+  selectedOption?: number;
+  source: "selected" | "custom";
+  timestamp: string;
+}
+
+export interface InterviewSession {
+  id: string;
   version: string;
-  generatedAt: string;
-  level: "L1";
-  items: PolicyItem[];
+  forgemindVersion: string;
+  startedAt: string;
+  questions: InterviewQuestion[];
+  answers: InterviewAnswer[];
+  completedAt?: string;
 }
 
-export interface ValidationResult {
-  valid: boolean;
-  exitCode: 0 | 1 | 2 | 3;
-  errors: string[];
+// ── Consolidated Knowledge ────────────────────────────────────
+
+export interface SystemOntologyKnowledge {
+  corePurpose: string;
+  mentalModel: string;
+  centralConcepts: string[];
+  systemOrientation: string;
+  principles: string[];
 }
+
+export interface DomainInvariantKnowledge {
+  rules: Array<{
+    name: string;
+    description: string;
+    severity: "critical" | "important";
+    status: "confirmed" | "inferred" | "needs-validation";
+  }>;
+  validStates: string[];
+  invalidStates: string[];
+  constraints: string[];
+}
+
+export interface ConceptualBoundaryKnowledge {
+  contexts: Array<{ name: string; responsibility: string; responsibilities: string[]; risks: string[] }>;
+  allowedRelations: Array<{ from: string; to: string; type: string }>;
+  prohibitedRelations: Array<{ from: string; to: string; reason: string }>;
+  dangerousInteractions: string[];
+}
+
+export interface DecisionKnowledge {
+  decisions: Array<{
+    title: string;
+    context: string;
+    choice: string;
+    irreversible: boolean;
+    alternatives: string[];
+    tradeoffs: string[];
+    implicitAssumptions: string[];
+    limitations: string[];
+  }>;
+}
+
+export interface CognitiveRiskKnowledge {
+  likelyErrors: string[];
+  deceptivePatterns: string[];
+  implicitCoupling: string[];
+  invisibleSideEffects: string[];
+  operationalAssumptions: string[];
+}
+
+export interface ConsolidatedKnowledge {
+  systemOntology: SystemOntologyKnowledge;
+  domainInvariants: DomainInvariantKnowledge;
+  conceptualBoundaries: ConceptualBoundaryKnowledge;
+  decisions: DecisionKnowledge;
+  cognitiveRisks: CognitiveRiskKnowledge;
+  evidenceIndex: EvidenceEntry[];
+  gaps: string[];
+}
+
+// ── Semantic Context (full intermediate state) ────────────────
+
+export interface SemanticContext {
+  version: string;
+  forgemindVersion: string;
+  generatedAt: string;
+  signals: ArchitecturalSignal[];
+  hypotheses: Hypothesis[];
+  interviewSessions: InterviewSession[];
+  consolidatedKnowledge: ConsolidatedKnowledge;
+}
+
+// ── LLM ───────────────────────────────────────────────────────
 
 export interface LLMConfig {
-  enabled: boolean;
   provider: Exclude<LLMProviderName, "none">;
   model: string;
   temperature: number;
   apiKey?: string;
   baseUrl?: string;
+  maxTokensBudget: number;
 }
 
-export interface RepoFacts {
-  languages: SupportedLanguage[];
-  frameworks: SupportedFramework[];
-  topLevelStructure: string[];
-  dependencySummary: {
-    files: string[];
-    packageDependenciesCount: number;
-    composerDependenciesCount: number;
-  };
-  architecturalSignals: string[];
-  complianceLevel: "L1";
+export interface LLMMessage {
+  role: "system" | "user" | "assistant";
+  content: string;
 }
 
-export interface LLMInput {
-  repoFacts: RepoFacts;
-  contractData: AIContract;
-  currentDocs: Record<string, string>;
-  generationType: LLMGenerationType;
+export interface LLMRequest {
+  messages: LLMMessage[];
+  temperature?: number;
+  jsonMode?: boolean;
 }
 
-export interface LLMOutput {
-  enrichedContent: Record<string, string>;
+export interface LLMResponse {
+  content: string;
   metadata: {
     provider: Exclude<LLMProviderName, "none">;
     model: string;
-    baseUrl?: string;
     tokensUsed?: number;
   };
 }
 
+// ── Configuration ─────────────────────────────────────────────
+
+export interface InterviewConfig {
+  maxQuestions: number;
+  adaptiveFollowUp: boolean;
+  language: string;
+}
+
 export interface ForgemindConfig {
-  compliance: {
-    level: "L1";
-  };
-  outputPaths: {
-    docs: string;
-    prompts: string;
-    policies: string;
-    ai: string;
-  };
+  outputPath: string;
+  intermediatePath: string;
   ignoreDirs: string[];
   ignoreFilePatterns?: string[];
-  templateOverrides: Record<string, string>;
-  llm?: LLMConfig;
+  llm: LLMConfig;
+  interview: InterviewConfig;
 }
 
 export interface GeneratorContext {
   scan: ScanResult;
   config: ForgemindConfig;
+}
+
+// ── Pipeline Result ───────────────────────────────────────────
+
+export interface ForgeResult {
+  rootPath: string;
+  generatedFiles: string[];
+  signals: ArchitecturalSignal[];
+  hypothesesCount: number;
+  confirmedHypotheses: number;
+  interviewCompleted: boolean;
+  documentsGenerated: string[];
+  evidenceMapEntries: number;
+  domainCandidatesCount: number;
+  unknownClaims: number;
+  llmProvider: string;
+  llmModel: string;
+  duration: number;
 }
