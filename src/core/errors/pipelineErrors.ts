@@ -20,3 +20,16 @@ export class QualityGateBlockedError extends Error {
     this.name = "QualityGateBlockedError";
   }
 }
+
+export class EnforcementViolationsError extends Error {
+  constructor(
+    public readonly totalViolations: number,
+    public readonly criticalViolations: number,
+    public readonly reportPath: string
+  ) {
+    super(
+      `Enforcement check found ${totalViolations} violation(s) (${criticalViolations} critical). See ${reportPath} for details.`
+    );
+    this.name = "EnforcementViolationsError";
+  }
+}

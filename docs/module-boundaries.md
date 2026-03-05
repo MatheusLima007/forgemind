@@ -1,128 +1,110 @@
 # Module Boundaries
 
-This document defines the conceptual boundaries, responsibilities, and interaction rules between different modules within the project. It aims to clarify the system's architecture, prevent common pitfalls, and guide future development.
+This document defines the conceptual boundaries between different modules within the project. It focuses on responsibilities, allowed interactions, and potential pitfalls, rather than technical import paths or file structures. The goal is to ensure a clear separation of concerns, promote maintainability, and prevent architectural degradation.
 
 ## Conceptual Contexts
 
-This section outlines the high-level conceptual modules, their primary purpose, and inherent risks.
+### Core Module
+-   **Responsibility**: Encapsulates the pipeline stages of the AI Context Engineering process.
+-   **Responsibilities**:\n    -   Orchestrating scanning, analyzing, hypothesizing, interviewing, consolidating, and generating knowledge.
+    -   Managing the SemanticContext as the central source of truth.
+    -   Interacting with LLMs exclusively via the LLMProvider interface.
+-   **Risks**:
+    -   Introducing tight coupling between pipeline stages, hindering modularity.
+    -   Bypassing the LLMProvider interface for direct LLM interaction.
+    -   Inconsistently updating or managing the SemanticContext.
 
-### 1. Core Module
-*   **Responsibility:** Encapsulates the 'AI Context Engineering' process (scanning, analyzing, hypothesizing, interviewing, consolidating, generating) in distinct, interchangeable components.
-*   **Responsibilities:**
-    *   Orchestrating the AI Context Engineering pipeline.
-    *   Managing the SemanticContext.
-    *   Interacting with LLMs via the LLMProvider interface.
-*   **Risks:**
-    *   Components becoming too tightly coupled, violating modularity.
-    *   Bypassing the LLMProvider interface, leading to direct LLM implementation dependencies.
+### LLM Abstraction Layer
+-   **Responsibility**: Provides a pluggable abstraction layer for Large Language Models.
+-   **Responsibilities**:
+    -   Defining the LLMProvider interface for consistent LLM interaction.
+    -   Handling LLM-specific error translation and retry logic.
+-   **Risks**:
+    -   Leaking LLM-specific implementation details into the Core Module.
+    -   Inconsistent error handling or semantic interpretation across different LLM providers.
+    -   Failure to abstract subtle semantic differences in how LLMs interpret code context.
 
-### 2. LLM Module
-*   **Responsibility:** Provides a pluggable abstraction layer for Large Language Models, strictly separating core business logic from specific LLM provider implementations.
-*   **Risks:**
-    *   Subtle semantic differences in how different LLMProviders interpret code context.
-    *   Inconsistent error handling across different LLM implementations.
-    *   Performance bottlenecks due to external API latency.
+### Utilities Module
+-   **Responsibility**: Houses generic, highly cohesive, low-dependency helper functions.
+-   **Risks**:
+    -   Introducing domain-specific logic, leading to tight coupling with other modules.
+    -   Creating circular dependencies.
+    -   Becoming a dumping ground for unrelated functions, reducing cohesion.
 
-### 3. `src/utils` Module
-*   **Responsibility:** A collection of highly cohesive, low-dependency, generic helper functions consumable by any other module without introducing circular dependencies or domain-specific logic.
-*   **Risks:**
-    *   Accidental introduction of domain-specific logic, violating its generic nature.
-    *   Becoming a dumping ground for unrelated functions, reducing cohesion.
+### Core Types Module
+-   **Responsibility**: Serves as the central contract definition for the entire application's data structures.
+-   **Responsibilities**:
+    -   Defining all core domain types.
+    -   Ensuring type consistency across all modules.
+    -   Providing clear data structure contracts for inter-module communication.
+-   **Risks**:
+    -   Other modules defining core domain types independently, leading to type fragmentation and inconsistency.
+    -   Outdated or incomplete type definitions causing runtime errors or misinterpretations.
 
-### 4. `src/core/types` Module
-*   **Responsibility:** Serves as the central contract definition for the entire application, ensuring type consistency and clear data structures across all other modules.
-*   **Risks:**
-    *   Fragmentation of type definitions if other modules define core types independently.
-    *   Outdated or incorrect type definitions leading to runtime errors.
+### CLI Module
+-   **Responsibility**: Exposes all primary interactions and workflows as command-line commands.
+-   **Responsibilities**:
+    -   Orchestrating high-level application workflows based on user commands.
+    -   Providing user feedback via the centralized logging mechanism.
+-   **Risks**:
+    -   Introducing business logic directly into the CLI, violating separation of concerns.
+    -   Poorly defined command interfaces leading to user confusion or incorrect usage.
+    -   Failure to integrate with the centralized logging system for consistent output.
 
 ## Responsibility Boundaries
 
-This section details the specific responsibilities and constraints for each conceptual module.
-
-### Core Module Responsibilities
-*   **Claim:** The `llm` module is designed as a pluggable abstraction layer for Large Language Models, strictly separating the core business logic from specific LLM provider implementations. The `core` module interacts with LLMs solely through the `LLMProvider` interface, enforcing the Dependency Inversion Principle. [CLAIM:hyp-2]
-    *   **Confidence:** confirmed
-    *   **Agent Implication:** Agents must interact with LLMs exclusively via the `LLMProvider` interface, avoiding direct coupling to specific LLM implementations. This ensures maintainability and allows for easy switching of LLM backends.
-
-### `src/utils` Module Responsibilities
-*   **Claim:** The `src/utils` module is intended to be a collection of highly cohesive, low-dependency, generic helper functions that can be consumed by any other module without introducing circular dependencies or domain-specific logic. [CLAIM:hyp-8]
-    *   **Confidence:** confirmed
-    *   **Agent Implication:** Agents should treat the `src/utils` module as a shared library for generic, non-domain-specific functionalities. New utilities should be added here if they meet the criteria of high cohesion and low dependency, and other modules should import from `utils` rather than duplicating common logic.
-
-### `src/core/types` Module Responsibilities
-*   **Claim:** The `src/core/types` module serves as the central contract definition for the entire application, ensuring type consistency and clear data structures across all other modules. No other module should define core domain types independently. [CLAIM:hyp-14]
-    *   **Confidence:** confirmed
-    *   **Agent Implication:** Agents must define all core domain types within `src/core/types/index.ts`. When introducing new data structures or modifying existing ones, ensure they are declared or updated in this central location to maintain type consistency and prevent fragmentation of type definitions.
+-   **Core Module**: Primarily responsible for the business logic and orchestration of the AI Context Engineering pipeline.
+-   **LLM Abstraction Layer**: Solely responsible for abstracting interactions with various Large Language Models.
+-   **Utilities Module**: Exclusively responsible for providing generic, reusable, non-domain-specific helper functions.
+-   **Core Types Module**: The single source of truth for all core domain type definitions.
+-   **CLI Module**: Responsible for user interaction via the command line and initiating core workflows.
 
 ## Allowed Relations
 
-This section describes the permissible conceptual interactions between modules.
-
-*   **Relation:** `core module` interacts via `LLMProvider` interface with `llm module`.
-    *   **Claim:** The `core` module interacts with LLMs solely through the `LLMProvider` interface, enforcing the Dependency Inversion Principle. [CLAIM:hyp-2]
-    *   **Evidence:** (See `hyp-2` evidence)
-    *   **Confidence:** confirmed
-    *   **Agent Implication:** Agents developing within the `core` module are permitted to import and use the `LLMProvider` interface and its factory, but not concrete LLM implementations.
-*   **Relation:** `Any module` consumes generic helper functions from `src/utils` module.
-    *   **Claim:** The `src/utils` module is intended to be a collection of highly cohesive, low-dependency, generic helper functions that can be consumed by any other module. [CLAIM:hyp-8]
-    *   **Evidence:** (See `hyp-8` evidence)
-    *   **Confidence:** confirmed
-    *   **Agent Implication:** Any module is allowed to import and utilize functions from `src/utils` for generic, non-domain-specific tasks.
-*   **Relation:** `Any module` imports type definitions from `src/core/types` module.
-    *   **Claim:** The `src/core/types` module serves as the central contract definition for the entire application, ensuring type consistency and clear data structures across all other modules. [CLAIM:hyp-14]
-    *   **Evidence:** (See `hyp-14` evidence)
-    *   **Confidence:** confirmed
-    *   **Agent Implication:** All modules are encouraged to import necessary core domain types from `src/core/types` to ensure type consistency.
+-   **From**: Core Module
+    -   **To**: LLM Abstraction Layer
+    -   **Type**: uses interface
+-   **From**: Any Module
+    -   **To**: Utilities Module
+    -   **Type**: consumes helpers
+-   **From**: Any Module
+    -   **To**: Core Types Module
+    -   **Type**: imports types
+-   **From**: CLI Module
+    -   **To**: Core Module
+    -   **Type**: invokes workflows
 
 ## Prohibited Relations
 
-This section describes conceptual interactions that are explicitly forbidden to maintain architectural integrity.
-
-*   **Relation:** `core module` to `Specific LLM implementation`.
-    *   **Reason:** Violates Dependency Inversion Principle; must interact via LLMProvider interface only.
-    *   **Claim:** Agents must interact with LLMs exclusively via the `LLMProvider` interface, avoiding direct coupling to specific LLM implementations. [CLAIM:hyp-2]
-    *   **Evidence:** (See `hyp-2` evidence)
-    *   **Confidence:** confirmed
-    *   **Agent Implication:** Agents must never directly import or instantiate specific LLM provider classes from the `core` module or any module that depends on `core` logic.
-*   **Relation:** `src/utils` module to `Any other module`.
-    *   **Reason:** Must not introduce circular dependencies.
-    *   **Claim:** The `src/utils` module is intended to be a collection of highly cohesive, low-dependency, generic helper functions that can be consumed by any other module without introducing circular dependencies or domain-specific logic. [CLAIM:hyp-8]
-    *   **Evidence:** (See `hyp-8` evidence)
-    *   **Confidence:** confirmed
-    *   **Agent Implication:** The `src/utils` module must not import any code from other domain-specific modules to prevent circular dependencies and maintain its generic nature.
-*   **Relation:** `Any module (other than src/core/types)` to `Core domain types`.
-    *   **Reason:** Must not define core domain types independently; all core types must be in `src/core/types`.
-    *   **Claim:** No other module should define core domain types independently. [CLAIM:hyp-14]
-    *   **Evidence:** (See `hyp-14` evidence)
-    *   **Confidence:** confirmed
-    *   **Agent Implication:** Agents must not define new core domain types outside of `src/core/types/index.ts`. Existing types should be modified only in this central location.
+-   **From**: Core Module
+    -   **To**: Specific LLM Provider Implementation
+    -   **Reason**: Violates Dependency Inversion Principle and LLM abstraction.
+-   **From**: Any Module (except the Core Types Module)
+    -   **To**: Core Domain Type Definition
+    -   **Reason**: Violates centralized type definition invariant, leading to inconsistency.
+-   **From**: Utilities Module
+    -   **To**: Domain-Specific Logic
+    -   **Reason**: Violates utility module's purpose of being generic and low-dependency.
 
 ## Dangerous Interactions
 
-These are scenarios where modules might interact in ways that lead to significant problems, even if not explicitly prohibited by direct import rules.
-
-*   **Interaction:** Subtle semantic differences in how various LLMProviders interpret code context, leading to inconsistent or incorrect analysis results.
-    *   **Agent Implication:** Developers should be aware that switching LLM providers, while technically seamless, might introduce behavioral changes. Thorough testing across providers is crucial for critical paths.
-*   **Interaction:** Uncontrolled LLM token usage leading to unexpected costs or performance degradation.
-    *   **Agent Implication:** All interactions with LLMs should consider token limits and cost implications. Mechanisms for token counting, cost estimation, and rate limiting should be utilized where available.
-*   **Interaction:** Failure to adhere to file/directory ignore policies, resulting in analysis of irrelevant or sensitive data.
-    *   **Agent Implication:** Agents must rigorously implement and respect file exclusion patterns (e.g., `.gitignore`, `.llmignore`) to prevent unintended data exposure or processing overhead.
+-   Direct access to specific LLM implementations from the Core Module, bypassing the LLM abstraction interface.
+-   Modifying the SemanticContext without proper versioning or consistency checks, leading to data corruption or loss of historical context.
+-   Introducing domain-specific logic or circular dependencies within the Utilities Module, compromising its reusability and modularity.
+-   Defining core domain types outside of the Core Types Module, leading to fragmented and inconsistent type definitions across the codebase.
+-   Ignoring the maxTokensBudget constraint during LLM prompt construction, potentially leading to excessive costs or truncated responses.
+-   Failure to distinguish between recoverable and non-recoverable LLM errors, resulting in inappropriate retry logic or missed opportunities for graceful degradation.
 
 ## Boundary Violation Signals
 
-This section lists observable indicators that a module boundary might be violated or at risk.
+-   **Claim**: The LLM Abstraction Layer is designed as a pluggable abstraction layer for Large Language Models, strictly separating the core business logic from specific LLM provider implementations. The Core Module interacts with LLMs solely through the LLMProvider interface, enforcing the Dependency Inversion Principle. [CLAIM:hyp-2]
+    -   **Confidence**: confirmed
+    -   **Agent Implication**: Agents must interact with LLMs exclusively via the LLMProvider interface, avoiding direct coupling to specific LLM implementations. This ensures maintainability and allows for easy switching of LLM backends.
 
-*   **Signal:** Direct imports of specific LLM provider implementations within the `core` module or any module that orchestrates core logic.
-    *   **Indicates:** Violation of the `LLMProvider` interface abstraction. [CLAIM:hyp-2]
-*   **Signal:** Introduction of domain-specific logic (e.g., business rules, specific AI context engineering steps) within the `src/utils` module.
-    *   **Indicates:** Erosion of the `src/utils` module's generic, low-dependency nature. [CLAIM:hyp-8]
-*   **Signal:** Definition of new core domain types in files outside of the designated central types module.
-    *   **Indicates:** Fragmentation of type definitions and potential for inconsistency. [CLAIM:hyp-14]
-*   **Signal:** Circular dependencies involving the `src/utils` module.
-    *   **Indicates:** `src/utils` is no longer a low-dependency utility library, potentially introducing tight coupling. [CLAIM:hyp-8]
-*   **Signal:** Inconsistent behavior or output when switching between different LLM providers without code changes.
-    *   **Indicates:** Potential for subtle semantic differences in LLM interpretation, requiring further investigation or abstraction refinement.
-*   **Signal:** Unexpectedly high LLM API costs or slow response times.
-    *   **Indicates:** Potential for uncontrolled token usage or inefficient LLM interaction patterns.
-*   **Signal:** Analysis results containing data from ignored files or directories.
-    *   **Indicates:** Failure in file/directory ignore policy enforcement.
+-   **Claim**: The Utilities Module is intended to be a collection of highly cohesive, low-dependency, generic helper functions that can be consumed by any other module without introducing circular dependencies or domain-specific logic. [CLAIM:hyp-8]
+    -   **Confidence**: confirmed
+    -   **Agent Implication**: Agents should treat the Utilities Module as a shared library for generic, non-domain-specific functionalities. New utilities should be added here if they meet the criteria of high cohesion and low dependency, and other modules should import from the Utilities Module rather than duplicating common logic.
+
+-   **Claim**: The Core Types Module serves as the central contract definition for the entire application, ensuring type consistency and clear data structures across all other modules. No other module should define core domain types independently. [CLAIM:hyp-14]
+    -   **Confidence**: confirmed
+    -   **Agent Implication**: Agents must define all core domain types within the Core Types Module. When introducing new data structures or modifying existing ones, ensure they are declared or updated in this central location to maintain type consistency and prevent fragmentation of type definitions.

@@ -147,12 +147,76 @@ export interface SystemOntologyKnowledge {
   principles: string[];
 }
 
+// ── Enforcement DSL ──────────────────────────────────────────
+
+export type InvariantRuleKind =
+  | "forbiddenImport"
+  | "requiredFileExists"
+  | "requiredSymbolExists"
+  | "namingConvention";
+
+export interface InvariantEnforcementSpec {
+  /** Which rule template to apply */
+  kind: InvariantRuleKind;
+  /** forbiddenImport: substring or regex pattern of the import path to forbid */
+  pattern?: string;
+  /** requiredFileExists: relative path from project root */
+  path?: string;
+  /** requiredSymbolExists: symbol name to look for */
+  symbol?: string;
+  /** requiredSymbolExists: relative file path to scan */
+  file?: string;
+  /** namingConvention: glob of files to validate */
+  glob?: string;
+  /** namingConvention: regex the file basename must satisfy */
+  regex?: string;
+  /** Optional human-readable remediation hint shown with violations */
+  fixHint?: string;
+}
+
+export type ViolationSeverity = "critical" | "important";
+
+export interface EnforcementViolation {
+  ruleId: string;
+  ruleName: string;
+  kind: "invariant" | "boundary" | "consistency";
+  severity: ViolationSeverity;
+  message: string;
+  file?: string;
+  line?: number;
+  fromContext?: string;
+  toContext?: string;
+  fixHint?: string;
+}
+
+export interface ConsistencyIssue {
+  id: string;
+  type: "boundary-contradiction" | "invariant-decision-conflict" | "duplicate-rule";
+  description: string;
+  relatedElements: string[];
+  suggestedQuestion?: string;
+}
+
+export interface EnforcementReport {
+  generatedAt: string;
+  rootPath: string;
+  totalViolations: number;
+  criticalViolations: number;
+  importantViolations: number;
+  consistencyIssues: number;
+  violations: EnforcementViolation[];
+  consistency: ConsistencyIssue[];
+  passed: boolean;
+}
+
 export interface DomainInvariantKnowledge {
   rules: Array<{
     name: string;
     description: string;
     severity: "critical" | "important";
     status: "confirmed" | "inferred" | "needs-validation";
+    /** Optional deterministic enforcement spec (used by InvariantCompiler) */
+    enforcement?: InvariantEnforcementSpec;
   }>;
   validStates: string[];
   invalidStates: string[];
