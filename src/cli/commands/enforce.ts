@@ -6,7 +6,6 @@
 
 import { Command } from "commander";
 import { resolve } from "node:path";
-import { readFile } from "node:fs/promises";
 import { loadConfig } from "../../core/config/configLoader.js";
 import { Logger } from "../../utils/logger.js";
 import { EnforcementViolationsError } from "../../core/errors/pipelineErrors.js";
@@ -19,7 +18,7 @@ import {
   saveEnforcementReport,
   formatEnforcementSummary,
 } from "../../core/enforcement/index.js";
-import type { SemanticContext } from "../../core/types/index.js";
+import { SemanticContextStore } from "../../core/orchestrator/semanticContextStore.js";
 
 export function registerEnforceCommand(program: Command): void {
   program
@@ -35,7 +34,7 @@ export function registerEnforceCommand(program: Command): void {
     )
     .option(
       "--context <path>",
-      "Path to the semantic context file (default: <root>/ai/context.json)"
+      "Path to the semantic context file or context directory (default: <root>/ai/context/)"
     )
     .action(async (_, command: Command) => {
       const options = command.optsWithGlobals<{
@@ -54,19 +53,15 @@ export function registerEnforceCommand(program: Command): void {
         // 1. Load project config (needed for intermediatePath)
         const config = await loadConfig(rootPath, options.config);
         const intermediateDir = resolve(rootPath, config.intermediatePath);
-        const contextPath = options.context
-          ? resolve(options.context)
-          : resolve(intermediateDir, "context.json");
+        const contextStore = new SemanticContextStore();
+        const contextBasePath = options.context ? resolve(options.context) : intermediateDir;
         const violationsPath = resolve(intermediateDir, "violations.json");
 
-        // 2. Load consolidated knowledge from context.json
-        let semanticContext: SemanticContext;
-        try {
-          const raw = await readFile(contextPath, "utf-8");
-          semanticContext = JSON.parse(raw) as SemanticContext;
-        } catch (err) {
+        // 2. Load consolidated knowledge from partitioned context
+        const semanticContext = await contextStore.load(contextBasePath);
+        if (!semanticContext) {
           const msg =
-            `Cannot read context file at '${contextPath}'. ` +
+            `Cannot read semantic context at '${contextBasePath}'. ` +
             "Run 'forgemind forge' (or 'forgemind generate') first to generate the semantic context.";
           if (options.json) {
             logger.outputJson({ command: "enforce", rootPath, error: msg });
@@ -143,7 +138,7 @@ export function registerEnforceCommand(program: Command): void {
 
         if (error instanceof EnforcementViolationsError) {
           process.exitCode = EXIT_CODES.ENFORCEMENT_VIOLATIONS;
-        } else if (!(error instanceof Error && error.message.includes("Cannot read context file"))) {
+        } else {
           process.exitCode = EXIT_CODES.GENERAL_ERROR;
         }
       }

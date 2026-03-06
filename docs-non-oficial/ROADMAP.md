@@ -4,8 +4,9 @@
 
 - **Fase 0 concluída** e validada com suíte ativa verde (`test`, `build`, `lint`).
 - **Fase 2 concluída** no código com cobertura de testes e artefatos ativos (`ai/semantic-drift.json`, `ai/semantic-drift-baseline.json`, `ai/contradictions.json`).
+- **Fase 3 concluída** no código com contexto particionado, modo incremental, regeneração seletiva e cobertura de testes.
 - Foi aplicada migração de testes legados para o contexto arquitetural atual, preservando intenção comportamental.
-- O roadmap abaixo permanece como guia de evolução; **Fase 1** e **Fase 3** continuam pendentes.
+- O roadmap abaixo permanece como guia de evolução; **Fase 1** continua pendente.
 
 ### Snapshot da Fase 0
 
@@ -25,6 +26,17 @@
 - ✅ **Semantic Drift Detector** implementado com calibração barata, score determinístico ponderado por categoria e baseline por `provider:model`.
 - ✅ **Confirmação humana para drift** implementada: em `forge` exige entrevista quando necessário; em `generate` exige `--accept-drift`.
 - ✅ **Contradiction Engine** implementado com detecção entre respostas↔hipóteses, boundaries↔invariants e decisions↔manual, com downgrade para `needs-review` + perguntas de follow-up.
+
+### Snapshot da Fase 3
+
+- ✅ **SemanticContext particionado** implementado em `ai/context/*` (`metadata.json`, `signals.json`, `hypotheses.json`, `knowledge.json`, `interviews/*.json`) com loader dedicado e fallback para `context.json` legado.
+- ✅ **Scan incremental por hash** implementado com `ai/incremental-state.json`, detecção de arquivos alterados e classificação de impacto por área.
+- ✅ **Regeneração parcial de documentos** implementada: quando seguro, regenera apenas docs afetados; em mudanças de impacto desconhecido faz fallback para regeneração completa.
+- ✅ **Cache & reuse** aplicado para artefatos intermediários (`signals`, `samples`, `domain-candidates`, `hypotheses`, `evidence-map`) quando não há mudança relevante.
+- ✅ **IDs estáveis no evidence-map** implementados via assinatura determinística, reduzindo churn entre execuções.
+- ✅ **Relevance ranking + top-K** implementados para `domainCandidates` e `hypotheses`, limitando ruído e consumo de tokens.
+- ✅ **Flag de segurança operacional** adicionada: `--full-regen` em `forge`/`generate`, com `mode` (`incremental|full`) no output JSON e também no log textual.
+- ✅ **Testes e docs atualizados**: suíte verde (`lint`, `build`, `test`) com cobertura para modo incremental/full e comportamento de saída (`mode`).
 
 This roadmap turns ForgeMind from a **high‑value agent‑first documentation engine** into an **agent‑native governance platform** (contracts + enforcement + drift resilience), while keeping the CLI experience strong.
 
@@ -210,9 +222,11 @@ Deliverables:
 
 ---
 
-# Phase 2 — Provider Variance & Semantic Integrity (P1–P2)  
+# Phase 2 — Provider Variance & Semantic Integrity (P1–P2) ✅ CONCLUÍDA  
 **Goal:** stop silent semantic drift when models/providers change.  
 **Target outcome:** predictable knowledge regardless of provider, or explicit warning when unstable.
+
+**Status:** concluída em 2026-03-05 com artefatos ativos (`ai/semantic-drift.json`, `ai/semantic-drift-baseline.json`, `ai/contradictions.json`).
 
 ### Deliverables
 1. **Provider Capability Matrix**
@@ -235,9 +249,9 @@ Deliverables:
    - Convert to questions; never silently override confirmed info.
 
 ### Success criteria
-- Switching provider triggers a drift check.
-- Drift results are visible and actionable.
-- Knowledge stays stable or is flagged as unstable.
+- ✅ Switching provider triggers a drift check.
+- ✅ Drift results are visible and actionable.
+- ✅ Knowledge stays stable or is flagged as unstable.
 
 ---
 
@@ -285,9 +299,11 @@ Deliverables:
 
 ---
 
-# Phase 3 — Scalability & Incremental Context (P2–P3)  
+# Phase 3 — Scalability & Incremental Context (P2–P3) ✅ CONCLUÍDA  
 **Goal:** handle big repos without exploding cost/tokens.  
 **Target outcome:** incremental runs, partitioned context, and selective regeneration.
+
+**Status:** concluída em 2026-03-05 com contexto particionado, execução incremental, regeneração seletiva e `--full-regen`.
 
 ### Deliverables
 1. **Partitioned SemanticContext**
@@ -309,9 +325,9 @@ Deliverables:
    - Prevent “hypothesis explosion” with top‑K selection rules.
 
 ### Success criteria
-- Big repos run without OOM/token explosion.
-- Regeneration is faster after small changes.
-- Context remains useful and not bloated.
+- ✅ Big repos run without OOM/token explosion.
+- ✅ Regeneration is faster after small changes.
+- ✅ Context remains useful and not bloated.
 
 ---
 
@@ -357,10 +373,10 @@ Deliverables:
 
 ## Recommended Sequencing (high confidence)
 
-1) **Phase 0** (quality + cost + traceability)  
-2) **Phase 1** (executable constraints)  
-3) **Phase 2** (provider variance & semantic integrity)  
-4) **Phase 3** (scalability & incremental context)
+1) ✅ **Phase 0** (quality + cost + traceability)  
+2) 🔜 **Phase 1** (executable constraints)  
+3) ✅ **Phase 2** (provider variance & semantic integrity)  
+4) ✅ **Phase 3** (scalability & incremental context)
 
 ---
 

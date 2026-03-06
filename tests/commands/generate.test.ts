@@ -4,10 +4,12 @@ import type { ForgemindConfig, ForgeResult } from "../../src/core/types/index.js
 import { TokenBudgetExceededError } from "../../src/core/errors/pipelineErrors.js";
 import { EXIT_CODES } from "../../src/cli/exitCodes.js";
 
-const { runMock, loadConfigMock } = vi.hoisted(() => {
+const { runMock, loadConfigMock, loggerInfoMock, loggerOutputJsonMock } = vi.hoisted(() => {
   return {
     runMock: vi.fn(),
-    loadConfigMock: vi.fn()
+    loadConfigMock: vi.fn(),
+    loggerInfoMock: vi.fn(),
+    loggerOutputJsonMock: vi.fn()
   };
 });
 
@@ -22,6 +24,19 @@ vi.mock("../../src/core/orchestrator/contextPipeline.js", () => {
 vi.mock("../../src/core/config/configLoader.js", () => {
   return {
     loadConfig: loadConfigMock
+  };
+});
+
+vi.mock("../../src/utils/logger.js", () => {
+  return {
+    Logger: vi.fn().mockImplementation(() => ({
+      info: loggerInfoMock,
+      error: vi.fn(),
+      success: vi.fn(),
+      warn: vi.fn(),
+      debug: vi.fn(),
+      outputJson: loggerOutputJsonMock
+    }))
   };
 });
 
@@ -50,6 +65,7 @@ const configFixture: ForgemindConfig = {
 };
 
 const resultFixture: ForgeResult = {
+  executionMode: "incremental",
   rootPath: "/tmp/repo",
   generatedFiles: ["/tmp/repo/docs/system-ontology.md"],
   signals: [],
@@ -127,8 +143,54 @@ describe("generate command", () => {
       providerOverride: "openai",
       skipInterview: true,
       acceptDrift: false,
-      allowInteractiveInterviewOnDrift: false
+      allowInteractiveInterviewOnDrift: false,
+      forceFullRegeneration: false
     });
+  });
+
+  it("passes full regeneration option to pipeline", async () => {
+    loadConfigMock.mockResolvedValue(configFixture);
+    runMock.mockResolvedValue(resultFixture);
+
+    const program = buildProgram();
+    await program.parseAsync(["generate", "--root", "/tmp/repo", "--full-regen"], { from: "user" });
+
+    const args = runMock.mock.calls[0];
+    expect(args[2]).toEqual({
+      providerOverride: undefined,
+      skipInterview: true,
+      acceptDrift: false,
+      allowInteractiveInterviewOnDrift: false,
+      forceFullRegeneration: true
+    });
+  });
+
+  it("prints Mode: full in textual output when --full-regen is used", async () => {
+    loadConfigMock.mockResolvedValue(configFixture);
+    runMock.mockResolvedValue({
+      ...resultFixture,
+      executionMode: "full"
+    });
+
+    const program = buildProgram();
+    await program.parseAsync(["generate", "--root", "/tmp/repo", "--full-regen"], { from: "user" });
+
+    expect(loggerInfoMock).toHaveBeenCalledWith("Mode: full");
+  });
+
+  it("emits mode=full in JSON output when --json and --full-regen are used", async () => {
+    loadConfigMock.mockResolvedValue(configFixture);
+    runMock.mockResolvedValue({
+      ...resultFixture,
+      executionMode: "full"
+    });
+
+    const program = buildProgram();
+    await program.parseAsync(["generate", "--root", "/tmp/repo", "--full-regen", "--json"], { from: "user" });
+
+    expect(loggerOutputJsonMock).toHaveBeenCalledTimes(1);
+    const payload = loggerOutputJsonMock.mock.calls[0][0] as { mode?: string };
+    expect(payload.mode).toBe("full");
   });
 
   it("sets budget exit code when token budget is exhausted", async () => {

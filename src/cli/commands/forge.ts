@@ -15,6 +15,7 @@ export function registerForgeCommand(program: Command): void {
     .option("--skip-interview", "Skip the interactive interview phase", false)
     .option("--force-interview", "Force a new guided interview even if ai/answers.json exists", false)
     .option("--accept-drift", "Accept semantic drift when provider/model changed", false)
+    .option("--full-regen", "Force full regeneration and ignore incremental cache", false)
     .action(async (_, command: Command) => {
       const options = command.optsWithGlobals<{
         root: string;
@@ -25,6 +26,7 @@ export function registerForgeCommand(program: Command): void {
         skipInterview: boolean;
         forceInterview: boolean;
         acceptDrift: boolean;
+        fullRegen: boolean;
       }>();
 
       const rootPath = resolve(options.root);
@@ -39,12 +41,14 @@ export function registerForgeCommand(program: Command): void {
           skipInterview: options.skipInterview,
           forceInterview: options.forceInterview,
           acceptDrift: options.acceptDrift,
-          allowInteractiveInterviewOnDrift: true
+          allowInteractiveInterviewOnDrift: true,
+          forceFullRegeneration: options.fullRegen
         }, logger);
 
         if (options.json) {
           logger.outputJson({
             command: "forge",
+            mode: result.executionMode,
             rootPath,
             generatedFiles: result.generatedFiles,
             documentsGenerated: result.documentsGenerated,
@@ -67,6 +71,7 @@ export function registerForgeCommand(program: Command): void {
         }
 
         logger.info(`Provider: ${result.llmProvider} (${result.llmModel})`);
+        logger.info(`Mode: ${result.executionMode}`);
         logger.info(`Hypotheses: ${result.hypothesesCount} (${result.confirmedHypotheses} confirmed)`);
         logger.info(`Interview: ${result.interviewCompleted ? "completed" : "skipped"}`);
         logger.info(`Documents: ${result.documentsGenerated.join(", ")}`);

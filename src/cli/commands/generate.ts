@@ -13,6 +13,7 @@ export function registerGenerateCommand(program: Command): void {
     .description("Generate agent-first docs from existing intermediate data (skips interview)")
     .option("--llm <provider>", "LLM provider override (anthropic, openai, openai-compatible, gemini)")
     .option("--accept-drift", "Accept semantic drift when provider/model changed", false)
+    .option("--full-regen", "Force full regeneration and ignore incremental cache", false)
     .action(async (_, command: Command) => {
       const options = command.optsWithGlobals<{
         root: string;
@@ -21,6 +22,7 @@ export function registerGenerateCommand(program: Command): void {
         verbose: boolean;
         llm?: LLMProviderName;
         acceptDrift: boolean;
+        fullRegen: boolean;
       }>();
 
       const rootPath = resolve(options.root);
@@ -34,12 +36,14 @@ export function registerGenerateCommand(program: Command): void {
           providerOverride: options.llm,
           skipInterview: true,
           acceptDrift: options.acceptDrift,
-          allowInteractiveInterviewOnDrift: false
+          allowInteractiveInterviewOnDrift: false,
+          forceFullRegeneration: options.fullRegen
         }, logger);
 
         if (options.json) {
           logger.outputJson({
             command: "generate",
+            mode: result.executionMode,
             rootPath,
             generatedFiles: result.generatedFiles,
             documentsGenerated: result.documentsGenerated,
@@ -58,6 +62,7 @@ export function registerGenerateCommand(program: Command): void {
           return;
         }
 
+        logger.info(`Mode: ${result.executionMode}`);
         logger.success(`${result.documentsGenerated.length} documents generated.`);
         for (const doc of result.documentsGenerated) {
           logger.info(`  ${doc}`);

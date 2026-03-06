@@ -6,10 +6,10 @@ import { EXIT_CODES } from "../../src/cli/exitCodes.js";
 
 // ── Hoisted mocks ─────────────────────────────────────────────
 
-const { loadConfigMock, readFileMock, compileMock, enforceMock, checkMock, saveReportMock } =
+const { loadConfigMock, loadContextMock, compileMock, enforceMock, checkMock, saveReportMock } =
   vi.hoisted(() => ({
     loadConfigMock: vi.fn(),
-    readFileMock: vi.fn(),
+    loadContextMock: vi.fn(),
     compileMock: vi.fn(),
     enforceMock: vi.fn(),
     checkMock: vi.fn(),
@@ -17,11 +17,11 @@ const { loadConfigMock, readFileMock, compileMock, enforceMock, checkMock, saveR
   }));
 
 vi.mock("../../src/core/config/configLoader.js", () => ({ loadConfig: loadConfigMock }));
-
-vi.mock("node:fs/promises", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("node:fs/promises")>();
-  return { ...actual, readFile: readFileMock };
-});
+vi.mock("../../src/core/orchestrator/semanticContextStore.js", () => ({
+  SemanticContextStore: vi.fn().mockImplementation(() => ({
+    load: loadContextMock,
+  })),
+}));
 
 vi.mock("../../src/core/enforcement/index.js", () => ({
   InvariantCompiler: vi.fn().mockImplementation(() => ({
@@ -126,7 +126,7 @@ afterEach(() => {
 describe("enforce command", () => {
   it("exits 0 and saves report when no violations found", async () => {
     loadConfigMock.mockResolvedValue(configFixture);
-    readFileMock.mockResolvedValue(JSON.stringify(contextFixture));
+    loadContextMock.mockResolvedValue(contextFixture);
     compileMock.mockResolvedValue([]);
     enforceMock.mockResolvedValue([]);
     checkMock.mockReturnValue([]);
@@ -141,7 +141,7 @@ describe("enforce command", () => {
 
   it("sets ENFORCEMENT_VIOLATIONS exit code when violations are found", async () => {
     loadConfigMock.mockResolvedValue(configFixture);
-    readFileMock.mockResolvedValue(JSON.stringify(contextFixture));
+    loadContextMock.mockResolvedValue(contextFixture);
     compileMock.mockResolvedValue([
       {
         ruleId: "no-db",
@@ -161,9 +161,9 @@ describe("enforce command", () => {
     expect(process.exitCode).toBe(EXIT_CODES.ENFORCEMENT_VIOLATIONS);
   });
 
-  it("sets GENERAL_ERROR when context.json cannot be read", async () => {
+  it("sets GENERAL_ERROR when semantic context cannot be read", async () => {
     loadConfigMock.mockResolvedValue(configFixture);
-    readFileMock.mockRejectedValue(new Error("ENOENT: no such file"));
+    loadContextMock.mockResolvedValue(null);
 
     const program = buildProgram();
     await program.parseAsync(["enforce", "--root", "/tmp/repo"], { from: "user" });
@@ -173,7 +173,7 @@ describe("enforce command", () => {
 
   it("does not fail on consistency issues without --fail-on-consistency flag", async () => {
     loadConfigMock.mockResolvedValue(configFixture);
-    readFileMock.mockResolvedValue(JSON.stringify(contextFixture));
+    loadContextMock.mockResolvedValue(contextFixture);
     compileMock.mockResolvedValue([]);
     enforceMock.mockResolvedValue([]);
     checkMock.mockReturnValue([
@@ -194,7 +194,7 @@ describe("enforce command", () => {
 
   it("fails on consistency issues with --fail-on-consistency flag", async () => {
     loadConfigMock.mockResolvedValue(configFixture);
-    readFileMock.mockResolvedValue(JSON.stringify(contextFixture));
+    loadContextMock.mockResolvedValue(contextFixture);
     compileMock.mockResolvedValue([]);
     enforceMock.mockResolvedValue([]);
     checkMock.mockReturnValue([

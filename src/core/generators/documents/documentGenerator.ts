@@ -61,10 +61,19 @@ export class DocumentGenerator {
     scan: ScanResult,
     evidenceMap: EvidenceEntry[]
   ): Promise<Map<DocumentType, string>> {
+    return this.generateMany(ALL_DOCUMENT_TYPES, knowledge, scan, evidenceMap);
+  }
+
+  async generateMany(
+    docTypes: DocumentType[],
+    knowledge: ConsolidatedKnowledge,
+    scan: ScanResult,
+    evidenceMap: EvidenceEntry[]
+  ): Promise<Map<DocumentType, string>> {
     const results = new Map<DocumentType, string>();
 
     // Generate sequentially to manage token usage and context
-    for (const docType of ALL_DOCUMENT_TYPES) {
+    for (const docType of docTypes) {
       const content = await this.generate(docType, knowledge, scan, evidenceMap);
       results.set(docType, content);
     }

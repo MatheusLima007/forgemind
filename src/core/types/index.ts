@@ -397,6 +397,7 @@ export interface RepoFacts {
 // ── Pipeline Result ───────────────────────────────────────────
 
 export interface ForgeResult {
+  executionMode: "incremental" | "full";
   rootPath: string;
   generatedFiles: string[];
   signals: ArchitecturalSignal[];

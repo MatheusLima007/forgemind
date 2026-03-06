@@ -27,6 +27,7 @@ import { HypothesisEngine } from "../intelligence/hypothesisEngine.js";
 import { InterviewEngine } from "../interview/interviewEngine.js";
 import { SemanticConsolidator } from "../consolidator/semanticConsolidator.js";
 import { DocumentGenerator, ALL_DOCUMENT_TYPES, DOCUMENT_FILENAMES } from "../generators/documents/documentGenerator.js";
+import type { DocumentType } from "../generators/documents/documentGenerator.js";
 import { RedundancyFilter } from "../generators/documents/redundancyFilter.js";
 import { LLMOrchestrator } from "../../llm/llm.orchestrator.js";
 import { DomainMiner } from "../mining/domainMiner.js";
@@ -43,6 +44,18 @@ import {
   toBaselineSnapshot
 } from "../validation/semanticDriftDetector.js";
 import { ContradictionEngine } from "../validation/contradictionEngine.js";
+import { SemanticContextStore } from "./semanticContextStore.js";
+import {
+  buildTrackedFileHashes,
+  buildTrackedFilesHash,
+  diffTrackedFiles,
+  planPartialRegeneration,
+  type IncrementalState,
+} from "./incrementalContext.js";
+import { rankDomainCandidates, rankHypotheses } from "../intelligence/relevanceRanker.js";
+
+const TOP_K_DOMAIN_CANDIDATES_PER_KIND = 40;
+const TOP_K_HYPOTHESES_PER_CATEGORY = 12;
 
 export interface ContextPipelineOptions {
   providerOverride?: LLMProviderName;
@@ -51,6 +64,7 @@ export interface ContextPipelineOptions {
   forceInterview?: boolean;
   acceptDrift?: boolean;
   allowInteractiveInterviewOnDrift?: boolean;
+  forceFullRegeneration?: boolean;
 }
 
 export class ContextPipeline {
@@ -58,6 +72,7 @@ export class ContextPipeline {
   private readonly signalAnalyzer = new SignalAnalyzer();
   private readonly codeSampler = new CodeSampler();
   private readonly domainMiner = new DomainMiner();
+  private readonly semanticContextStore = new SemanticContextStore();
 
   async run(
     rootPath: string,
@@ -81,11 +96,12 @@ export class ContextPipeline {
     const provider = orchestrator.getProvider();
     logger.success(`LLM: ${orchestrator.getProviderName()} / ${orchestrator.getModelName()}`);
 
-    const contextPath = resolve(intermediateDir, "context.json");
+    const incrementalStatePath = resolve(intermediateDir, "incremental-state.json");
     const semanticDriftPath = resolve(intermediateDir, "semantic-drift.json");
     const semanticDriftBaselinePath = resolve(intermediateDir, "semantic-drift-baseline.json");
     const contradictionsPath = resolve(intermediateDir, "contradictions.json");
-    const previousContext = await this.loadCached<SemanticContext>(contextPath);
+    const previousContext = await this.semanticContextStore.load(intermediateDir);
+    const previousIncrementalState = await this.loadCached<IncrementalState>(incrementalStatePath);
     const previousKnowledge = previousContext?.consolidatedKnowledge ?? null;
     const previousSemanticDrift = await this.loadCached<SemanticDriftReport>(semanticDriftPath);
     const semanticDriftBaselineRegistry =
@@ -96,6 +112,25 @@ export class ContextPipeline {
     const scan = await this.scanner.scan(rootPath, config);
     logger.success(`Detected: ${scan.languages.join(", ")} | ${scan.frameworks.join(", ")}`);
 
+    const trackedFiles = await buildTrackedFileHashes(rootPath, config);
+    const trackedFilesHash = buildTrackedFilesHash(trackedFiles);
+    const changeSet = diffTrackedFiles(previousIncrementalState?.trackedFiles, trackedFiles);
+    const incrementalPlan = planPartialRegeneration(changeSet);
+    const forceFullRegeneration = options.forceFullRegeneration === true;
+    const executionMode: ForgeResult["executionMode"] = forceFullRegeneration ? "full" : "incremental";
+    const canReuseCodeArtifacts = !forceFullRegeneration && !options.interviewOnly && (changeSet.unchanged || incrementalPlan.docsOnlyChange);
+    if (forceFullRegeneration) {
+      logger.info("Full regeneration mode enabled: ignoring incremental cache and planning full document regeneration.");
+    }
+    if (changeSet.unchanged) {
+      logger.info("Incremental scan: no tracked file changes detected.");
+    } else {
+      logger.info(
+        `Incremental scan: ${changeSet.changedFiles.length} changed, ${changeSet.removedFiles.length} removed | ` +
+        `areas=${incrementalPlan.areas.join(", ") || "none"}`
+      );
+    }
+
     // 3. Analyze architectural signals
     logger.info("Analyzing architectural signals...");
     let signals: ArchitecturalSignal[];
@@ -103,7 +138,7 @@ export class ContextPipeline {
     const signalsPath = resolve(intermediateDir, "signals.json");
     const cachedSignals = await this.loadCached<{ signals: ArchitecturalSignal[] }>(signalsPath);
 
-    if (cachedSignals && !options.interviewOnly) {
+    if (cachedSignals && canReuseCodeArtifacts) {
       signals = cachedSignals.signals;
       logger.debug(`Loaded ${signals.length} cached signals`);
     } else {
@@ -119,7 +154,7 @@ export class ContextPipeline {
     const samplesPath = resolve(intermediateDir, "samples.json");
     const cachedSamples = await this.loadCached<{ samples: CodeSample[] }>(samplesPath);
 
-    if (cachedSamples && !options.interviewOnly) {
+    if (cachedSamples && canReuseCodeArtifacts) {
       samples = cachedSamples.samples;
       logger.debug(`Loaded ${samples.length} cached code samples`);
     } else {
@@ -135,7 +170,7 @@ export class ContextPipeline {
     const candidatesPath = resolve(intermediateDir, "domain-candidates.json");
     const cachedCandidates = await this.loadCached<{ candidates: DomainCandidate[] }>(candidatesPath);
 
-    if (cachedCandidates && !options.interviewOnly) {
+    if (cachedCandidates && canReuseCodeArtifacts) {
       domainCandidates = cachedCandidates.candidates;
       logger.debug(`Loaded ${domainCandidates.length} cached domain candidates`);
     } else {
@@ -146,6 +181,7 @@ export class ContextPipeline {
         forgemindVersion: FORGEMIND_VERSION
       });
     }
+    domainCandidates = rankDomainCandidates(domainCandidates, TOP_K_DOMAIN_CANDIDATES_PER_KIND);
     logger.success(`${domainCandidates.length} domain candidates mined`);
 
     const semanticDriftThreshold = config.llm.semanticDriftThreshold ?? 0.35;
@@ -229,7 +265,7 @@ export class ContextPipeline {
     const hypothesesPath = resolve(intermediateDir, "hypotheses.json");
     const cachedHypotheses = await this.loadCached<{ hypotheses: Hypothesis[] }>(hypothesesPath);
 
-    if (cachedHypotheses && !options.interviewOnly) {
+    if (cachedHypotheses && canReuseCodeArtifacts) {
       hypotheses = cachedHypotheses.hypotheses;
       logger.debug(`Loaded ${hypotheses.length} cached hypotheses`);
     } else {
@@ -238,6 +274,7 @@ export class ContextPipeline {
       hypotheses = await hypothesisEngine.generateHypotheses(scan, signals, samples, domainCandidates);
       await this.saveIntermediate(hypothesesPath, { hypotheses, generatedAt: new Date().toISOString(), forgemindVersion: FORGEMIND_VERSION });
     }
+    hypotheses = rankHypotheses(hypotheses, TOP_K_HYPOTHESES_PER_CATEGORY);
 
     const qualityGate = new HypothesisQualityGate(config.qualityGate);
     const qualityGateSummary = qualityGate.apply(hypotheses);
@@ -254,13 +291,15 @@ export class ContextPipeline {
     const evidenceMapPath = resolve(intermediateDir, "evidence-map.json");
     const cachedEvidenceMap = await this.loadCached<{ entries: EvidenceEntry[] }>(evidenceMapPath);
 
-    if (cachedEvidenceMap && !options.interviewOnly) {
+    if (cachedEvidenceMap && canReuseCodeArtifacts) {
       evidenceMap = cachedEvidenceMap.entries;
       logger.debug(`Loaded ${evidenceMap.length} cached evidence entries`);
     } else {
       orchestrator.setStage("evidence-map");
       const evidenceGenerator = new EvidenceMapGenerator(provider);
       evidenceMap = await evidenceGenerator.generate(scan, hypotheses, signals, samples, domainCandidates);
+      const previousEvidenceEntries = cachedEvidenceMap?.entries ?? [];
+      evidenceMap = this.stabilizeEvidenceEntries(evidenceMap, previousEvidenceEntries);
       await this.saveIntermediate(evidenceMapPath, {
         entries: evidenceMap,
         generatedAt: new Date().toISOString(),
@@ -326,6 +365,7 @@ export class ContextPipeline {
       const tokenUsage = orchestrator.getTokenUsageReport();
       this.logTokenUsage(logger, tokenUsage);
       return {
+        executionMode,
         rootPath,
         generatedFiles: [],
         signals,
@@ -374,7 +414,7 @@ export class ContextPipeline {
       consolidatedKnowledge: knowledge,
       consolidatedKnowledgeHash: knowledgeHash
     };
-    await this.saveIntermediate(contextPath, semanticContext);
+    await this.semanticContextStore.save(intermediateDir, semanticContext);
     logger.success("Knowledge consolidated");
 
     const questionToHypotheses = new Map<string, string[]>();
@@ -420,27 +460,37 @@ export class ContextPipeline {
       }
     }
 
-    // 10. Generate documents
-    logger.info("Generating agent-first documentation...");
-    orchestrator.setStage("document-generation");
-    const docGenerator = new DocumentGenerator(provider);
-    const rawDocuments = await docGenerator.generateAll(knowledge, scan, evidenceMap);
-    logger.success(`${rawDocuments.size} documents generated`);
+    const docsToRegenerate = this.resolveDocsToRegenerate(
+      changeSet.unchanged,
+      incrementalPlan.docsToRegenerate,
+      incrementalPlan.requiresFullRegeneration,
+      forceFullRegeneration
+    );
 
-    // 11. Filter redundancy
-    logger.info("Filtering redundant content...");
-    orchestrator.setStage("redundancy-filter");
-    const redundancyFilter = new RedundancyFilter(provider);
-    const filteredDocuments = await redundancyFilter.filterAll(rawDocuments);
-    logger.success("Redundancy filter applied");
+    let filteredDocuments = new Map<string, string>();
+    if (docsToRegenerate.length > 0) {
+      logger.info(`Generating agent-first documentation (${docsToRegenerate.join(", ")})...`);
+      orchestrator.setStage("document-generation");
+      const docGenerator = new DocumentGenerator(provider);
+      const rawDocuments = await docGenerator.generateMany(docsToRegenerate, knowledge, scan, evidenceMap);
+      logger.success(`${rawDocuments.size} documents generated`);
 
-    // 12. Write documents
+      logger.info("Filtering redundant content...");
+      orchestrator.setStage("redundancy-filter");
+      const redundancyFilter = new RedundancyFilter(provider);
+      filteredDocuments = await redundancyFilter.filterAll(rawDocuments);
+      logger.success("Redundancy filter applied");
+    } else {
+      logger.info("Incremental regeneration: no document changes required.");
+    }
+
+    // 10. Write documents
     const generatedFiles: string[] = [];
     const documentsGenerated: string[] = [];
 
-    for (const docType of ALL_DOCUMENT_TYPES) {
+    for (const docType of docsToRegenerate) {
       const filename = DOCUMENT_FILENAMES[docType];
-      const content = filteredDocuments.get(docType) ?? rawDocuments.get(docType);
+      const content = filteredDocuments.get(docType);
       if (content) {
         const filePath = resolve(outputDir, filename);
         await writeTextFile(filePath, content);
@@ -452,6 +502,14 @@ export class ContextPipeline {
 
     const duration = Date.now() - startTime;
     const tokenUsage = orchestrator.getTokenUsageReport();
+    const incrementalState: IncrementalState = {
+      version: "1.0.0",
+      generatedAt: new Date().toISOString(),
+      trackedFiles,
+      trackedFilesHash,
+      cachedSamplesHash: trackedFilesHash
+    };
+    await this.saveIntermediate(incrementalStatePath, incrementalState);
     this.logTokenUsage(logger, tokenUsage);
 
     logger.info(
@@ -464,6 +522,7 @@ export class ContextPipeline {
     logger.success(`\nForgeMind complete in ${(duration / 1000).toFixed(1)}s`);
 
     return {
+      executionMode,
       rootPath,
       generatedFiles,
       signals,
@@ -499,6 +558,72 @@ export class ContextPipeline {
 
   private async saveIntermediate(path: string, data: unknown): Promise<void> {
     await writeTextFile(path, stableStringify(data));
+  }
+
+  private resolveDocsToRegenerate(
+    unchanged: boolean,
+    plannedDocs: DocumentType[],
+    requiresFullRegeneration: boolean,
+    forceFullRegeneration: boolean
+  ): DocumentType[] {
+    if (forceFullRegeneration) {
+      return [...ALL_DOCUMENT_TYPES];
+    }
+
+    if (unchanged) {
+      return [];
+    }
+
+    if (requiresFullRegeneration || plannedDocs.length === 0) {
+      return [...ALL_DOCUMENT_TYPES];
+    }
+
+    return [...plannedDocs].sort((left, right) => left.localeCompare(right));
+  }
+
+  private stabilizeEvidenceEntries(entries: EvidenceEntry[], previousEntries: EvidenceEntry[]): EvidenceEntry[] {
+    const previousSignatureToId = new Map<string, string>();
+    for (const entry of previousEntries) {
+      previousSignatureToId.set(this.evidenceSignature(entry), entry.claimId);
+    }
+
+    const signatures = entries
+      .map((entry) => ({ entry, signature: this.evidenceSignature(entry) }))
+      .sort((left, right) => left.signature.localeCompare(right.signature));
+
+    let nextId = 1;
+    const assigned = signatures.map(({ entry, signature }) => {
+      const existingId = previousSignatureToId.get(signature);
+      const claimId = existingId ?? `claim-${String(nextId++).padStart(4, "0")}`;
+      return {
+        ...entry,
+        claimId
+      };
+    });
+
+    return assigned.sort((left, right) => left.claimId.localeCompare(right.claimId));
+  }
+
+  private evidenceSignature(entry: EvidenceEntry): string {
+    const normalizedEvidence = [...entry.evidence]
+      .map((reference) => ({
+        path: reference.path,
+        symbol: reference.symbol ?? "",
+        lines: reference.lines ?? ""
+      }))
+      .sort((left, right) => {
+        const leftKey = `${left.path}|${left.symbol}|${left.lines}`;
+        const rightKey = `${right.path}|${right.symbol}|${right.lines}`;
+        return leftKey.localeCompare(rightKey);
+      });
+
+    return hashJson({
+      claimType: entry.claimType,
+      summary: entry.summary.trim().toLowerCase(),
+      confidence: entry.confidence,
+      agentImpact: entry.agentImpact.trim().toLowerCase(),
+      evidence: normalizedEvidence
+    });
   }
 
   private logTokenUsage(logger: Logger, report: ForgeResult["tokenUsage"]): void {

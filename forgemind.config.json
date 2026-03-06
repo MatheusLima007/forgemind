@@ -26,8 +26,7 @@
     "provider": "gemini",
     "model": "gemini-2.5-flash",
     "temperature": 0.3,
-    "maxTokensBudget": 300000,
-    "apiKey": "REMOVED_GOOGLE_API_KEY"
+    "maxTokensBudget": 300000
   },
   "qualityGate": {
     "minConfidence": 0.65,

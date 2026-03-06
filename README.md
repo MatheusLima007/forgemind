@@ -53,6 +53,9 @@ forgemind interview
 
 # Generate docs from existing intermediate data
 forgemind generate
+
+# Force full regeneration (ignore incremental cache)
+forgemind forge --full-regen
 ```
 
 ## Configuration
@@ -135,7 +138,7 @@ ForgeMind persists intermediate results in `ai/` (configurable) so you can:
 - Resume an interrupted interview
 - Inspect the signals, hypotheses, and consolidated knowledge
 
-Files: `signals.json`, `samples.json`, `hypotheses.json`, `evidence-map.json`, `interview.json`, `answers.json`, `context.json`, `knowledge-diff.json`, `semantic-drift.json`, `semantic-drift-baseline.json`, `contradictions.json`
+Files: `signals.json`, `samples.json`, `hypotheses.json`, `evidence-map.json`, `interview.json`, `answers.json`, `knowledge-diff.json`, `semantic-drift.json`, `semantic-drift-baseline.json`, `contradictions.json`, `incremental-state.json`, and partitioned context under `context/` (`metadata.json`, `signals.json`, `hypotheses.json`, `knowledge.json`, `interviews/*.json`)
 
 ## Phase 0 Runtime Behaviors
 
@@ -150,6 +153,15 @@ Files: `signals.json`, `samples.json`, `hypotheses.json`, `evidence-map.json`, `
 - **Semantic drift detection**: when provider/model changes, ForgeMind runs a bounded calibration and writes `ai/semantic-drift.json`; if `driftScore > llm.semanticDriftThreshold`, execution requires interview confirmation (`forgemind forge`) or explicit `--accept-drift`.
 - **Stable baseline registry**: accepted calibrations are persisted in `ai/semantic-drift-baseline.json` per `provider:model`, with an active baseline pointer to compare future switches deterministically.
 - **Contradiction engine**: contradictions are detected across interview answers vs hypotheses, boundaries vs invariants, and decisions vs operating manual, persisted in `ai/contradictions.json` with generated follow-up questions.
+
+## Phase 3 Runtime Behaviors
+
+- **Partitioned semantic context**: ForgeMind persists semantic context in `ai/context/*` (instead of a monolithic `ai/context.json`) and reconstructs it through an internal loader used by pipeline and enforcement.
+- **Incremental scan by file hash**: tracked textual/code-relevant files are hashed and stored in `ai/incremental-state.json`; unchanged runs reuse cached intermediates deterministically.
+- **Selective regeneration**: changed files are mapped to impacted areas (invariants, boundaries, decisions, ontology/manual) and only affected documents are regenerated when classification is safe; unknown-impact code changes fall back to full regeneration for correctness.
+- **Cache & reuse**: `samples.json` and other intermediate artifacts are reused when tracked changes are absent (or docs-only), reducing unnecessary LLM calls.
+- **Stable evidence IDs + relevance top-K**: evidence entries receive deterministic stable IDs, and domain candidates/hypotheses are ranked with per-category top-K limits to reduce token noise.
+- **`--full-regen` safety switch**: `forge` and `generate` accept `--full-regen` to bypass incremental reuse and force a full deterministic regeneration (useful in CI/debug scenarios).
 
 ## Architecture
 
