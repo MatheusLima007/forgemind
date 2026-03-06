@@ -33,3 +33,12 @@ export class EnforcementViolationsError extends Error {
     this.name = "EnforcementViolationsError";
   }
 }
+
+export class SemanticDriftBlockedError extends Error {
+  constructor(public readonly driftScore: number, public readonly threshold: number) {
+    super(
+      `Semantic drift requires confirmation. driftScore=${driftScore.toFixed(3)} exceeds threshold=${threshold.toFixed(3)}. Re-run with --accept-drift to accept this provider/model variance.`
+    );
+    this.name = "SemanticDriftBlockedError";
+  }
+}

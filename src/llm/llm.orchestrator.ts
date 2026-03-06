@@ -2,6 +2,7 @@ import type { LLMConfig, LLMProviderName } from "../core/types/index.js";
 import type { LLMProvider } from "./provider.interface.js";
 import { createLLMProvider } from "./providerFactory.js";
 import { TokenBudgetEnforcer } from "../core/runtime/tokenBudgetEnforcer.js";
+import { getProviderCapabilities } from "./providerCapabilities.js";
 
 export interface LLMOrchestratorOptions {
   config: LLMConfig;
@@ -53,7 +54,17 @@ export class LLMOrchestrator {
       );
     }
 
-    this.budgetedProvider = this.tokenBudgetEnforcer.wrapProvider(baseProvider);
+    const budgetedProvider = this.tokenBudgetEnforcer.wrapProvider(baseProvider);
+    const providerName = this.getProviderName() as Exclude<LLMProviderName, "none">;
+    const capabilities = getProviderCapabilities(providerName);
+
+    this.budgetedProvider = {
+      chat: async (request) => {
+        const adaptedRequest = adaptRequestForCapabilities(request, capabilities.maxOutputTokens, capabilities.supportsJsonMode);
+        return budgetedProvider.chat(adaptedRequest);
+      }
+    };
+
     return this.budgetedProvider;
   }
 
@@ -65,6 +76,11 @@ export class LLMOrchestrator {
     return this.options.config.model;
   }
 
+  getCapabilities() {
+    const providerName = this.getProviderName() as Exclude<LLMProviderName, "none">;
+    return getProviderCapabilities(providerName);
+  }
+
   setStage(stage: string): void {
     this.tokenBudgetEnforcer.setStage(stage);
   }
@@ -72,4 +88,45 @@ export class LLMOrchestrator {
   getTokenUsageReport() {
     return this.tokenBudgetEnforcer.getReport();
   }
+}
+
+function adaptRequestForCapabilities(
+  request: Parameters<LLMProvider["chat"]>[0],
+  maxOutputTokens: number,
+  supportsJsonMode: boolean
+): Parameters<LLMProvider["chat"]>[0] {
+  const adapted = {
+    ...request,
+    maxOutputTokens: request.maxOutputTokens
+      ? Math.min(request.maxOutputTokens, maxOutputTokens)
+      : maxOutputTokens
+  };
+
+  if (!request.jsonMode || supportsJsonMode) {
+    return adapted;
+  }
+
+  const strictJsonInstruction =
+    "Return only strict JSON object. Do not include markdown, explanations, prefixes or suffixes.";
+
+  const hasSystemMessage = adapted.messages.some((message) => message.role === "system");
+
+  if (hasSystemMessage) {
+    return {
+      ...adapted,
+      messages: adapted.messages.map((message) =>
+        message.role === "system"
+          ? { ...message, content: `${message.content}\n\n${strictJsonInstruction}` }
+          : message
+      )
+    };
+  }
+
+  return {
+    ...adapted,
+    messages: [
+      { role: "system", content: strictJsonInstruction },
+      ...adapted.messages
+    ]
+  };
 }

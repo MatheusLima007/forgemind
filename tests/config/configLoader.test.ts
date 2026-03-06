@@ -89,4 +89,25 @@ describe("loadConfig", () => {
 
     await expect(loadConfig(root)).rejects.toThrow("qualityGate.maxPendingRatio must be a number between 0 and 1");
   });
+
+  it("throws when llm.semanticDriftThreshold is invalid", async () => {
+    const root = await mkdtemp(join(tmpdir(), "forgemind-config-drift-threshold-"));
+    createdDirs.push(root);
+
+    await writeFile(
+      join(root, "forgemind.config.json"),
+      JSON.stringify({
+        llm: {
+          provider: "anthropic",
+          model: "claude-sonnet-4-20250514",
+          temperature: 0.3,
+          maxTokensBudget: 12000,
+          semanticDriftThreshold: 1.5
+        }
+      }),
+      "utf-8"
+    );
+
+    await expect(loadConfig(root)).rejects.toThrow("llm.semanticDriftThreshold must be a number between 0 and 1");
+  });
 });

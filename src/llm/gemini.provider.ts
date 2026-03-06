@@ -41,7 +41,8 @@ export class GeminiProvider implements LLMProvider {
       }
 
       const generationConfig: Record<string, unknown> = {
-        temperature: request.temperature ?? this.options.temperature
+        temperature: request.temperature ?? this.options.temperature,
+        maxOutputTokens: request.maxOutputTokens
       };
 
       if (request.jsonMode) {

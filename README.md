@@ -68,7 +68,8 @@ forgemind generate
     "provider": "anthropic",
     "model": "claude-sonnet-4-20250514",
     "temperature": 0.3,
-    "maxTokensBudget": 120000
+    "maxTokensBudget": 120000,
+    "semanticDriftThreshold": 0.35
   },
   "qualityGate": {
     "minConfidence": 0.65,
@@ -103,6 +104,9 @@ forgemind generate
 # Use a different provider
 forgemind forge --llm openai
 forgemind forge --llm gemini
+
+# Accept provider/model semantic drift explicitly
+forgemind forge --llm gemini --accept-drift
 ```
 
 ## CLI Commands
@@ -131,7 +135,7 @@ ForgeMind persists intermediate results in `ai/` (configurable) so you can:
 - Resume an interrupted interview
 - Inspect the signals, hypotheses, and consolidated knowledge
 
-Files: `signals.json`, `samples.json`, `hypotheses.json`, `evidence-map.json`, `interview.json`, `answers.json`, `context.json`, `knowledge-diff.json`
+Files: `signals.json`, `samples.json`, `hypotheses.json`, `evidence-map.json`, `interview.json`, `answers.json`, `context.json`, `knowledge-diff.json`, `semantic-drift.json`, `semantic-drift-baseline.json`, `contradictions.json`
 
 ## Phase 0 Runtime Behaviors
 
@@ -139,6 +143,13 @@ Files: `signals.json`, `samples.json`, `hypotheses.json`, `evidence-map.json`, `
 - **Hypothesis quality gate**: hypotheses below `qualityGate.minConfidence` become `needs-review`; if `needs-review / total > qualityGate.maxPendingRatio`, consolidation is blocked until interview answers exist.
 - **Knowledge versioning & diff**: each run persists `consolidatedKnowledgeHash` in `ai/context.json` and generates `ai/knowledge-diff.json` with added/removed/modified items for invariants, boundaries, decisions, and cognitive risks.
 - **Interview persistence upgrades**: when answers exist, interview shows current answer with `[E]dit / [S]kip / Enter continue`; `ai/answers.json` is updated incrementally and deterministically.
+
+## Phase 2 Runtime Behaviors
+
+- **Provider capability matrix**: providers are mapped by `supportsJsonMode`, `maxOutputTokens`, `supportsTools`, and `varianceLevel`; request shaping adapts accordingly.
+- **Semantic drift detection**: when provider/model changes, ForgeMind runs a bounded calibration and writes `ai/semantic-drift.json`; if `driftScore > llm.semanticDriftThreshold`, execution requires interview confirmation (`forgemind forge`) or explicit `--accept-drift`.
+- **Stable baseline registry**: accepted calibrations are persisted in `ai/semantic-drift-baseline.json` per `provider:model`, with an active baseline pointer to compare future switches deterministically.
+- **Contradiction engine**: contradictions are detected across interview answers vs hypotheses, boundaries vs invariants, and decisions vs operating manual, persisted in `ai/contradictions.json` with generated follow-up questions.
 
 ## Architecture
 

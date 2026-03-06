@@ -329,6 +329,7 @@ export interface LLMConfig {
   apiKey?: string;
   baseUrl?: string;
   maxTokensBudget: number;
+  semanticDriftThreshold?: number;
 }
 
 export interface LLMMessage {
@@ -340,6 +341,7 @@ export interface LLMRequest {
   messages: LLMMessage[];
   temperature?: number;
   jsonMode?: boolean;
+  maxOutputTokens?: number;
 }
 
 export interface LLMResponse {
@@ -410,5 +412,51 @@ export interface ForgeResult {
   tokenUsage: TokenUsageReport;
   qualityGate: HypothesisQualityGateSummary;
   knowledgeDiff: KnowledgeDiffSummary;
+  semanticDrift?: SemanticDriftReport;
+  contradictions?: ContradictionsReport;
   duration: number;
+}
+
+export interface ProviderCapabilities {
+  supportsJsonMode: boolean;
+  maxOutputTokens: number;
+  varianceLevel: "low" | "medium" | "high";
+  supportsTools: boolean;
+}
+
+export interface SemanticDriftCalibrationItem {
+  category: HypothesisCategory;
+  statement: string;
+}
+
+export interface SemanticDriftReport {
+  provider: Exclude<LLMProviderName, "none">;
+  model: string;
+  previousProvider?: Exclude<LLMProviderName, "none">;
+  previousModel?: string;
+  diffSummary: string[];
+  driftScore: number;
+  actionRequired: boolean;
+  generatedAt: string;
+}
+
+export interface ContradictionItem {
+  id: string;
+  type:
+    | "answer-hypothesis"
+    | "boundary-invariant"
+    | "decision-operating-manual";
+  severity: "critical" | "important";
+  description: string;
+  relatedElements: string[];
+  suggestedQuestion: string;
+}
+
+export interface ContradictionsReport {
+  generatedAt: string;
+  total: number;
+  byType: Record<ContradictionItem["type"], number>;
+  contradictions: ContradictionItem[];
+  interviewQuestions: InterviewQuestion[];
+  downgradedHypotheses: string[];
 }

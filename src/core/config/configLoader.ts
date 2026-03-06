@@ -60,6 +60,16 @@ function assertValidConfig(config: ForgemindConfig): void {
     throw new Error("Invalid config: llm.maxTokensBudget must be a number >= 1000");
   }
 
+  if (
+    config.llm.semanticDriftThreshold !== undefined &&
+    (typeof config.llm.semanticDriftThreshold !== "number" ||
+      Number.isNaN(config.llm.semanticDriftThreshold) ||
+      config.llm.semanticDriftThreshold < 0 ||
+      config.llm.semanticDriftThreshold > 1)
+  ) {
+    throw new Error("Invalid config: llm.semanticDriftThreshold must be a number between 0 and 1");
+  }
+
   if (typeof config.qualityGate.minConfidence !== "number" || Number.isNaN(config.qualityGate.minConfidence) || config.qualityGate.minConfidence < 0 || config.qualityGate.minConfidence > 1) {
     throw new Error("Invalid config: qualityGate.minConfidence must be a number between 0 and 1");
   }
@@ -108,7 +118,8 @@ export async function loadConfig(rootPath: string, explicitPath?: string): Promi
       temperature: parsed.llm?.temperature ?? defaultConfig.llm.temperature,
       apiKey: parsed.llm?.apiKey ?? defaultConfig.llm.apiKey,
       baseUrl: parsed.llm?.baseUrl ?? defaultConfig.llm.baseUrl,
-      maxTokensBudget: parsed.llm?.maxTokensBudget ?? defaultConfig.llm.maxTokensBudget
+      maxTokensBudget: parsed.llm?.maxTokensBudget ?? defaultConfig.llm.maxTokensBudget,
+      semanticDriftThreshold: parsed.llm?.semanticDriftThreshold ?? defaultConfig.llm.semanticDriftThreshold
     },
     qualityGate: {
       minConfidence: parsed.qualityGate?.minConfidence ?? defaultConfig.qualityGate.minConfidence,

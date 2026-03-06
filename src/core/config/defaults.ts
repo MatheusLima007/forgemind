@@ -11,7 +11,8 @@ export const defaultConfig: ForgemindConfig = {
     provider: "anthropic",
     model: "claude-sonnet-4-20250514",
     temperature: 0.3,
-    maxTokensBudget: 30000
+    maxTokensBudget: 30000,
+    semanticDriftThreshold: 0.35
   },
   qualityGate: {
     minConfidence: 0.65,

@@ -125,7 +125,9 @@ describe("generate command", () => {
     expect(args[1]).toEqual(configFixture);
     expect(args[2]).toEqual({
       providerOverride: "openai",
-      skipInterview: true
+      skipInterview: true,
+      acceptDrift: false,
+      allowInteractiveInterviewOnDrift: false
     });
   });
 

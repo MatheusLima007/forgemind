@@ -36,7 +36,7 @@ export class AnthropicProvider implements LLMProvider {
 
       const body: Record<string, unknown> = {
         model: this.options.model,
-        max_tokens: 8192,
+        max_tokens: request.maxOutputTokens ?? 8192,
         temperature: request.temperature ?? this.options.temperature,
         messages: conversationMessages
       };

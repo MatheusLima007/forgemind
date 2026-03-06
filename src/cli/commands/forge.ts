@@ -4,7 +4,7 @@ import { loadConfig } from "../../core/config/configLoader.js";
 import { ContextPipeline } from "../../core/orchestrator/contextPipeline.js";
 import type { LLMProviderName } from "../../core/types/index.js";
 import { Logger } from "../../utils/logger.js";
-import { TokenBudgetExceededError, QualityGateBlockedError } from "../../core/errors/pipelineErrors.js";
+import { TokenBudgetExceededError, QualityGateBlockedError, SemanticDriftBlockedError } from "../../core/errors/pipelineErrors.js";
 import { EXIT_CODES } from "../exitCodes.js";
 
 export function registerForgeCommand(program: Command): void {
@@ -14,6 +14,7 @@ export function registerForgeCommand(program: Command): void {
     .option("--llm <provider>", "LLM provider override (anthropic, openai, openai-compatible, gemini)")
     .option("--skip-interview", "Skip the interactive interview phase", false)
     .option("--force-interview", "Force a new guided interview even if ai/answers.json exists", false)
+    .option("--accept-drift", "Accept semantic drift when provider/model changed", false)
     .action(async (_, command: Command) => {
       const options = command.optsWithGlobals<{
         root: string;
@@ -23,6 +24,7 @@ export function registerForgeCommand(program: Command): void {
         llm?: LLMProviderName;
         skipInterview: boolean;
         forceInterview: boolean;
+        acceptDrift: boolean;
       }>();
 
       const rootPath = resolve(options.root);
@@ -35,7 +37,9 @@ export function registerForgeCommand(program: Command): void {
         const result = await pipeline.run(rootPath, config, {
           providerOverride: options.llm,
           skipInterview: options.skipInterview,
-          forceInterview: options.forceInterview
+          forceInterview: options.forceInterview,
+          acceptDrift: options.acceptDrift,
+          allowInteractiveInterviewOnDrift: true
         }, logger);
 
         if (options.json) {
@@ -55,6 +59,8 @@ export function registerForgeCommand(program: Command): void {
             tokenUsage: result.tokenUsage,
             qualityGate: result.qualityGate,
             knowledgeDiff: result.knowledgeDiff,
+            semanticDrift: result.semanticDrift,
+            contradictions: result.contradictions,
             duration: result.duration
           });
           return;
@@ -70,6 +76,12 @@ export function registerForgeCommand(program: Command): void {
           `Knowledge diff: inv(+${result.knowledgeDiff.invariants.added}/-${result.knowledgeDiff.invariants.removed}/~${result.knowledgeDiff.invariants.modified}) ` +
           `dec(+${result.knowledgeDiff.decisions.added}/-${result.knowledgeDiff.decisions.removed}/~${result.knowledgeDiff.decisions.modified})`
         );
+        if (result.semanticDrift) {
+          logger.info(`Semantic drift: ${result.semanticDrift.driftScore.toFixed(3)} (required=${result.semanticDrift.actionRequired})`);
+        }
+        if (result.contradictions) {
+          logger.info(`Contradictions: ${result.contradictions.total}`);
+        }
       } catch (error) {
         const message = error instanceof Error ? error.message : "Unknown error";
         if (options.json) {
@@ -81,6 +93,8 @@ export function registerForgeCommand(program: Command): void {
           process.exitCode = EXIT_CODES.TOKEN_BUDGET_EXHAUSTED;
         } else if (error instanceof QualityGateBlockedError) {
           process.exitCode = EXIT_CODES.QUALITY_GATE_BLOCKED;
+        } else if (error instanceof SemanticDriftBlockedError) {
+          process.exitCode = EXIT_CODES.SEMANTIC_DRIFT_BLOCKED;
         } else {
           process.exitCode = EXIT_CODES.GENERAL_ERROR;
         }

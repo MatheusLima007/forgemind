@@ -38,7 +38,8 @@ export class OpenAIProvider implements LLMProvider {
       const body: Record<string, unknown> = {
         model: this.options.model,
         temperature: request.temperature ?? this.options.temperature,
-        messages: request.messages.map((m) => ({ role: m.role, content: m.content }))
+        messages: request.messages.map((m) => ({ role: m.role, content: m.content })),
+        max_tokens: request.maxOutputTokens
       };
 
       if (request.jsonMode) {

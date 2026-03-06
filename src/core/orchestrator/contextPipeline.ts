@@ -6,6 +6,7 @@ import type {
   ArchitecturalSignal,
   CodeSample,
   ConsolidatedKnowledge,
+  ContradictionsReport,
   DomainCandidate,
   EvidenceEntry,
   ForgemindConfig,
@@ -14,6 +15,7 @@ import type {
   InterviewSession,
   KnowledgeDiffSummary,
   LLMProviderName,
+  SemanticDriftReport,
   SemanticContext,
   StructuredAnswer,
 } from "../types/index.js";
@@ -31,13 +33,24 @@ import { DomainMiner } from "../mining/domainMiner.js";
 import { EvidenceMapGenerator } from "../mining/evidenceMapGenerator.js";
 import { HypothesisQualityGate, shouldBlockConsolidation } from "../intelligence/hypothesisQualityGate.js";
 import { buildKnowledgeDiff } from "../consolidator/knowledgeDiff.js";
-import { QualityGateBlockedError } from "../errors/pipelineErrors.js";
+import { QualityGateBlockedError, SemanticDriftBlockedError } from "../errors/pipelineErrors.js";
+import {
+  baselineKey,
+  type BaselineRegistry,
+  type BaselineSnapshot,
+  SemanticDriftDetector,
+  shouldRunSemanticDriftCheck,
+  toBaselineSnapshot
+} from "../validation/semanticDriftDetector.js";
+import { ContradictionEngine } from "../validation/contradictionEngine.js";
 
 export interface ContextPipelineOptions {
   providerOverride?: LLMProviderName;
   skipInterview?: boolean;
   interviewOnly?: boolean;
   forceInterview?: boolean;
+  acceptDrift?: boolean;
+  allowInteractiveInterviewOnDrift?: boolean;
 }
 
 export class ContextPipeline {
@@ -69,8 +82,14 @@ export class ContextPipeline {
     logger.success(`LLM: ${orchestrator.getProviderName()} / ${orchestrator.getModelName()}`);
 
     const contextPath = resolve(intermediateDir, "context.json");
+    const semanticDriftPath = resolve(intermediateDir, "semantic-drift.json");
+    const semanticDriftBaselinePath = resolve(intermediateDir, "semantic-drift-baseline.json");
+    const contradictionsPath = resolve(intermediateDir, "contradictions.json");
     const previousContext = await this.loadCached<SemanticContext>(contextPath);
     const previousKnowledge = previousContext?.consolidatedKnowledge ?? null;
+    const previousSemanticDrift = await this.loadCached<SemanticDriftReport>(semanticDriftPath);
+    const semanticDriftBaselineRegistry =
+      await this.loadCached<BaselineRegistry>(semanticDriftBaselinePath) ?? { baselines: {} };
 
     // 2. Scan repository
     logger.info("Scanning repository...");
@@ -128,6 +147,80 @@ export class ContextPipeline {
       });
     }
     logger.success(`${domainCandidates.length} domain candidates mined`);
+
+    const semanticDriftThreshold = config.llm.semanticDriftThreshold ?? 0.35;
+    const providerName = orchestrator.getProviderName() as Exclude<LLMProviderName, "none">;
+    const modelName = orchestrator.getModelName();
+    const currentBaselineKey = baselineKey(providerName, modelName);
+    const activeBaseline = semanticDriftBaselineRegistry.activeKey
+      ? semanticDriftBaselineRegistry.baselines[semanticDriftBaselineRegistry.activeKey]
+      : undefined;
+    const sameProviderBaseline = semanticDriftBaselineRegistry.baselines[currentBaselineKey];
+    const semanticDriftBaseline: BaselineSnapshot | undefined = activeBaseline ?? sameProviderBaseline;
+    let semanticDrift: SemanticDriftReport;
+    let requiresDriftInterview = false;
+
+    if (shouldRunSemanticDriftCheck(previousSemanticDrift, providerName, modelName)) {
+      logger.info("Running semantic drift calibration...");
+      orchestrator.setStage("semantic-drift");
+
+      const detector = new SemanticDriftDetector(semanticDriftThreshold);
+      const { report, calibration } = await detector.detect({
+        provider,
+        providerName,
+        modelName,
+        previous: previousSemanticDrift ?? undefined,
+        baseline: semanticDriftBaseline ?? undefined,
+        signals,
+        samples,
+        domainCandidates
+      });
+
+      semanticDrift = report;
+      await this.saveIntermediate(semanticDriftPath, report);
+
+      if (!report.actionRequired || options.acceptDrift) {
+        const updatedRegistry: BaselineRegistry = {
+          activeKey: currentBaselineKey,
+          baselines: {
+            ...semanticDriftBaselineRegistry.baselines,
+            [currentBaselineKey]: toBaselineSnapshot(providerName, modelName, calibration)
+          }
+        };
+        await this.saveIntermediate(
+          semanticDriftBaselinePath,
+          updatedRegistry
+        );
+      }
+
+      logger.info(`Semantic drift score: ${report.driftScore.toFixed(3)} (threshold=${semanticDriftThreshold.toFixed(3)})`);
+
+      if (report.actionRequired && !options.acceptDrift) {
+        if (options.allowInteractiveInterviewOnDrift) {
+          requiresDriftInterview = true;
+          logger.warn("Semantic drift requires interview confirmation before consolidation.");
+        } else {
+          throw new SemanticDriftBlockedError(report.driftScore, semanticDriftThreshold);
+        }
+      }
+
+      if (report.actionRequired && options.acceptDrift) {
+        logger.warn("Semantic drift accepted via --accept-drift.");
+      }
+    } else {
+      semanticDrift = {
+        provider: providerName,
+        model: modelName,
+        previousProvider: previousSemanticDrift?.provider,
+        previousModel: previousSemanticDrift?.model,
+        diffSummary: ["Provider/model unchanged; semantic drift check skipped."],
+        driftScore: 0,
+        actionRequired: false,
+        generatedAt: new Date().toISOString()
+      };
+      await this.saveIntermediate(semanticDriftPath, semanticDrift);
+      logger.debug("Semantic drift check skipped (provider/model unchanged)");
+    }
 
     // 6. Generate hypotheses
     logger.info("Generating architectural hypotheses via LLM...");
@@ -192,7 +285,7 @@ export class ContextPipeline {
       structuredAnswers = cachedAnswers.answers;
     }
 
-    const shouldRunInterview = options.forceInterview || structuredAnswers.length === 0;
+    const shouldRunInterview = options.forceInterview || structuredAnswers.length === 0 || requiresDriftInterview;
 
     if (!shouldRunInterview) {
       logger.info(`Using existing interview answers (${structuredAnswers.length} responses)`);
@@ -248,6 +341,7 @@ export class ContextPipeline {
         tokenUsage,
         qualityGate: qualityGateSummary,
         knowledgeDiff: emptyKnowledgeDiffSummary(),
+        semanticDrift,
         duration: Date.now() - startTime
       };
     }
@@ -282,6 +376,42 @@ export class ContextPipeline {
     };
     await this.saveIntermediate(contextPath, semanticContext);
     logger.success("Knowledge consolidated");
+
+    const questionToHypotheses = new Map<string, string[]>();
+    for (const session of interviewSessions) {
+      for (const question of session.questions) {
+        questionToHypotheses.set(question.id, question.relatedHypotheses ?? []);
+      }
+    }
+
+    const operatingManualPath = resolve(outputDir, "agent-operating-manual.md");
+    const operatingManual = (await fileExists(operatingManualPath))
+      ? await readTextFile(operatingManualPath)
+      : undefined;
+
+    const contradictionEngine = new ContradictionEngine();
+    const contradictions = contradictionEngine.analyze({
+      hypotheses,
+      answers: structuredAnswers,
+      questionToHypotheses,
+      knowledge,
+      operatingManual
+    });
+    await this.saveIntermediate(contradictionsPath, contradictions);
+    if (contradictions.downgradedHypotheses.length > 0) {
+      await this.saveIntermediate(hypothesesPath, {
+        hypotheses,
+        generatedAt: new Date().toISOString(),
+        forgemindVersion: FORGEMIND_VERSION
+      });
+      logger.warn(
+        `Hypotheses downgraded to needs-review due to interview contradictions: ${contradictions.downgradedHypotheses.join(", ")}`
+      );
+    }
+    logger.info(
+      `Contradictions: total=${contradictions.total} (answer-hypothesis=${contradictions.byType["answer-hypothesis"]}, ` +
+      `boundary-invariant=${contradictions.byType["boundary-invariant"]}, decision-operating-manual=${contradictions.byType["decision-operating-manual"]})`
+    );
 
     if (knowledge.gaps.length > 0) {
       logger.warn(`Knowledge gaps identified: ${knowledge.gaps.length}`);
@@ -349,6 +479,8 @@ export class ContextPipeline {
       tokenUsage,
       qualityGate: qualityGateSummary,
       knowledgeDiff: knowledgeDiffArtifact.summary,
+      semanticDrift,
+      contradictions,
       duration
     };
   }

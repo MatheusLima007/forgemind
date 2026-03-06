@@ -18,5 +18,7 @@ export * from "./runtime/tokenBudgetEnforcer.js";
 export * from "./errors/pipelineErrors.js";
 export * from "./validation/arrcSchema.js";
 export * from "./validation/llmResponseSchema.js";
+export * from "./validation/semanticDriftDetector.js";
+export * from "./validation/contradictionEngine.js";
 export * from "./enforcement/index.js";
 

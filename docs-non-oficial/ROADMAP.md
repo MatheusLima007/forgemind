@@ -1,10 +1,11 @@
 # ForgeMind Roadmap — Agent‑First → Agent‑Native (2026)
 
-## Status de Execução (atualizado em 2026-03-01)
+## Status de Execução (atualizado em 2026-03-05)
 
 - **Fase 0 concluída** e validada com suíte ativa verde (`test`, `build`, `lint`).
+- **Fase 2 concluída** no código com cobertura de testes e artefatos ativos (`ai/semantic-drift.json`, `ai/semantic-drift-baseline.json`, `ai/contradictions.json`).
 - Foi aplicada migração de testes legados para o contexto arquitetural atual, preservando intenção comportamental.
-- O roadmap abaixo permanece como guia de evolução; fases 1–3 continuam pendentes.
+- O roadmap abaixo permanece como guia de evolução; **Fase 1** e **Fase 3** continuam pendentes.
 
 ### Snapshot da Fase 0
 
@@ -17,6 +18,13 @@
 ### Próximo foco recomendado
 
 - Iniciar **Fase 1 — Executable Contracts**, priorizando `InvariantCompiler` + `BoundaryEnforcer` para enforcement determinístico.
+
+### Snapshot da Fase 2
+
+- ✅ **Provider Capability Matrix** implementada (`supportsJsonMode`, `maxOutputTokens`, `varianceLevel`, `supportsTools`) com adaptação automática de requests.
+- ✅ **Semantic Drift Detector** implementado com calibração barata, score determinístico ponderado por categoria e baseline por `provider:model`.
+- ✅ **Confirmação humana para drift** implementada: em `forge` exige entrevista quando necessário; em `generate` exige `--accept-drift`.
+- ✅ **Contradiction Engine** implementado com detecção entre respostas↔hipóteses, boundaries↔invariants e decisions↔manual, com downgrade para `needs-review` + perguntas de follow-up.
 
 This roadmap turns ForgeMind from a **high‑value agent‑first documentation engine** into an **agent‑native governance platform** (contracts + enforcement + drift resilience), while keeping the CLI experience strong.
 
